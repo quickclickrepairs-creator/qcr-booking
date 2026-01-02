@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Quick Click Repairs – Book Appointment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {font-family:Arial;background:#f0f8ff;padding:20px}
+    .box {max-width:600px;margin:auto;background:white;padding:30px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2)}
+    h1,h2{text-align:center;color:#00C4B4}
+    input,select{width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc;font-size:18px}
+    button{background:#00C4B4;color:white;border:none;padding:18px;font-size:22px;border-radius:10px;width:100%;cursor:pointer}
+    button:hover{background:#00a89a}
+  </style>
+</head>
+<body>
+<div class="box">
+  <h1>Quick Click Repairs</h1>
+  <h2>Book Your Appointment</h2>
+  <form action="/book" method="post">
+    <input name="customer_name" placeholder="Full Name" required>
+    <input name="customer_email" type="email" placeholder="Email" required>
+    <input name="customer_phone" placeholder="Phone Number" required>
+    <select name="service_type" required>
+      <option value="">Select Service</option>
+      <option>Laptop Repair</option>
+      <option>Desktop Repair</option>
+      <option>Screen Replacement</option>
+      <option>Virus Removal</option>
+      <option>Data Recovery</option>
+      <option>Other</option>
+    </select>
+    <input name="appointment_date" type="date" required>
+    <select name="appointment_time" required>
+      <option value="">Preferred Time</option>
+      <option>09:00 – 10:00</option>
+      <option>10:00 – 11:00</option>
+      <option>11:00 – 12:00</option>
+      <option>13:00 – 14:00</option>
+      <option>14:00 – 15:00</option>
+      <option>15:00 – 16:00</option>
+      <option>16:00 – 17:00</option>
+    </select>
+    <button type="submit">BOOK APPOINTMENT</button>
+  </form>
+</div>
+</body>
+</html>
