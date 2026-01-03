@@ -17,18 +17,26 @@ async def book(
     service_type: str = Form(...),
     appointment_date: str = Form(...),
     appointment_time: str = Form(...),
+    description: str = Form("")
 ):
     return HTMLResponse(f"""
-    <h1 style="color:green;text-align:center;margin-top:100px">BOOKING CONFIRMED!</h1>
+    <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
     <h2 style="text-align:center">Thank you {customer_name}</h2>
     <p style="text-align:center;font-size:24px">
       Service: {service_type}<br>
       Date: {appointment_date}<br>
       Time: {appointment_time}<br>
-      Phone: {customer_phone}<br>
-      Email: {customer_email}
+      We will contact you on {customer_phone}
     </p>
     <p style="text-align:center;margin-top:50px">
       <a href="/">← Book Another</a>
     </p>
+    """)
+
+@app.get("/admin")
+async def admin(request: Request):
+    return HTMLResponse("""
+    <h1 style="text-align:center;color:#00C4B4">QCR Admin Dashboard</h1>
+    <p style="text-align:center">Coming soon — all bookings will appear here</p>
+    <p style="text-align:center"><a href="/">← Back to Booking</a></p>
     """)
