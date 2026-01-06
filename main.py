@@ -5,7 +5,6 @@ from fastapi.responses import HTMLResponse
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Booking page
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("booking.html", {"request": request})
@@ -34,17 +33,15 @@ async def book(
     </p>
     """)
 
-# Admin dashboard
 @app.get("/admin")
 async def admin(request: Request):
     return templates.TemplateResponse("admin_dashboard.html", {"request": request})
 
-# New forms (buttons work)
 @app.get("/new-customer")
 async def new_customer(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Customer</h1>
-    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center;font-size:24px">Customer registration form coming soon</p>
     <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
     """)
 
@@ -52,7 +49,7 @@ async def new_customer(request: Request):
 async def new_ticket(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Ticket</h1>
-    <p style="text-align:center;font-size:24px">Full repair form coming soon</p>
+    <p style="text-align:center;font-size:24px">Full repair ticket form coming soon</p>
     <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
     """)
 
@@ -60,7 +57,7 @@ async def new_ticket(request: Request):
 async def new_checkin(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Check In</h1>
-    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center;font-size:24px">Check in form coming soon</p>
     <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
     """)
 
@@ -68,7 +65,7 @@ async def new_checkin(request: Request):
 async def new_invoice(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Invoice</h1>
-    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center;font-size:24px">Invoice form coming soon</p>
     <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
     """)
 
@@ -76,6 +73,6 @@ async def new_invoice(request: Request):
 async def new_estimate(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Estimate</h1>
-    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center;font-size:24px">Estimate form coming soon</p>
     <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
     """)
