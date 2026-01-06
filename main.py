@@ -1,78 +1,78 @@
-from fastapi import FastAPI, Form, Request
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
-
-@app.get("/")
-async def home(request: Request):
-    return templates.TemplateResponse("booking.html", {"request": request})
-
-@app.post("/book")
-async def book(
-    customer_name: str = Form(...),
-    customer_email: str = Form(...),
-    customer_phone: str = Form(...),
-    service_type: str = Form(...),
-    appointment_date: str = Form(...),
-    appointment_time: str = Form(...),
-    description: str = Form("")
-):
-    return HTMLResponse(f"""
-    <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
-    <h2 style="text-align:center">Thank you {customer_name}</h2>
-    <p style="text-align:center;font-size:24px">
-      Service: {service_type}<br>
-      Date: {appointment_date}<br>
-      Time: {appointment_time}<br>
-      We will contact you on {customer_phone}
-    </p>
-    <p style="text-align:center;margin-top:50px">
-      <a href="/">← Book Another</a> | <a href="/admin">Admin Dashboard</a>
-    </p>
-    """)
-
-@app.get("/admin")
-async def admin(request: Request):
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request})
-
-@app.get("/new-customer")
-async def new_customer(request: Request):
-    return HTMLResponse("""
-    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Customer</h1>
-    <p style="text-align:center;font-size:24px">Customer registration form coming soon</p>
-    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
-    """)
-
 @app.get("/new-ticket")
 async def new_ticket(request: Request):
     return HTMLResponse("""
     <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Ticket</h1>
-    <p style="text-align:center;font-size:24px">Full repair ticket form coming soon</p>
-    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    <div style="max-width:800px;margin:auto;background:#2a2a2a;padding:30px;border-radius:15px">
+      <form action="/create-ticket" method="post">
+        <h2 style="color:#00C4B4">Customer</h2>
+        <input name="customer_name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="customer_email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="customer_phone" placeholder="Phone" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        
+        <h2 style="color:#00C4B4">Device</h2>
+        <input name="device_type" placeholder="Type (Laptop/Phone/etc)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="brand" placeholder="Brand" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="model" placeholder="Model" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="serial" placeholder="Serial/IMEI" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="password" placeholder="Password/PIN" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Faults (check all that apply)</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+          <label><input type="checkbox" name="faults" value="No Power"> No Power</label>
+          <label><input type="checkbox" name="faults" value="Won't Charge"> Won't Charge</label>
+          <label><input type="checkbox" name="faults" value="Cracked Screen"> Cracked Screen</label>
+          <label><input type="checkbox" name="faults" value="Liquid Damage"> Liquid Damage</label>
+          <label><input type="checkbox" name="faults" value="Slow Performance"> Slow Performance</label>
+          <label><input type="checkbox" name="faults" value="Virus/Malware"> Virus/Malware</label>
+          <label><input type="checkbox" name="faults" value="No WiFi"> No WiFi</label>
+          <label><input type="checkbox" name="faults" value="Other"> Other</label>
+        </div>
+        <input name="other_fault" placeholder="Describe 'Other' fault" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Pricing</h2>
+        <input name="labour_price" type="number" step="0.01" placeholder="Labour £" value="45.00" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="parts_price" type="number" step="0.01" placeholder="Parts £" value="0.00" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Notes</h2>
+        <textarea name="notes" rows="4" placeholder="Additional notes" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white"></textarea>
+        
+        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">CREATE TICKET</button>
+      </form>
+      <p style="text-align:center;margin-top:30px"><a href="/admin" style="color:#00C4B4">← Back to Dashboard</a></p>
+    </div>
     """)
 
-@app.get("/new-checkin")
-async def new_checkin(request: Request):
-    return HTMLResponse("""
-    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Check In</h1>
-    <p style="text-align:center;font-size:24px">Check in form coming soon</p>
-    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
-    """)
-
-@app.get("/new-invoice")
-async def new_invoice(request: Request):
-    return HTMLResponse("""
-    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Invoice</h1>
-    <p style="text-align:center;font-size:24px">Invoice form coming soon</p>
-    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
-    """)
-
-@app.get("/new-estimate")
-async def new_estimate(request: Request):
-    return HTMLResponse("""
-    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Estimate</h1>
-    <p style="text-align:center;font-size:24px">Estimate form coming soon</p>
-    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+@app.post("/create-ticket")
+async def create_ticket(
+    customer_name: str = Form(...),
+    customer_email: str = Form(...),
+    customer_phone: str = Form(...),
+    device_type: str = Form(...),
+    brand: str = Form(...),
+    model: str = Form(...),
+    serial: str = Form(""),
+    password: str = Form(""),
+    faults: list[str] = Form([]),
+    other_fault: str = Form(""),
+    labour_price: float = Form(45.0),
+    parts_price: float = Form(0.0),
+    notes: str = Form("")
+):
+    total = labour_price + parts_price
+    all_faults = ", ".join(faults)
+    if other_fault:
+        all_faults += f", {other_fault}"
+    return HTMLResponse(f"""
+    <h1 style="color:green;text-align:center;margin-top:100px">TICKET CREATED!</h1>
+    <h2 style="text-align:center">Customer: {customer_name}</h2>
+    <p style="text-align:center;font-size:24px">
+      Device: {brand} {model} ({device_type})<br>
+      Faults: {all_faults or 'None specified'}<br>
+      Labour: £{labour_price:.2f}<br>
+      Parts: £{parts_price:.2f}<br>
+      Total: £{total:.2f}
+    </p>
+    <p style="text-align:center;margin-top:50px">
+      <a href="/admin">← Back to Dashboard</a>
+    </p>
     """)
