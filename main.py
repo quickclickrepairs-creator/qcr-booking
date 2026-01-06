@@ -1,7 +1,22 @@
+from fastapi import FastAPI, Form, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/")
+async def home(request: Request):
+    return templates.TemplateResponse("booking.html", {"request": request})
+
+@app.get("/admin")
+async def admin(request: Request):
+    return templates.TemplateResponse("admin_dashboard.html", {"request": request})
+
 @app.get("/new-ticket")
 async def new_ticket(request: Request):
     return HTMLResponse("""
-    <div style="max-width:800px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
+    <div style="max-width:900px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
       <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Ticket</h1>
       <form action="/create-ticket" method="post">
         <h2 style="color:#00C4B4">Customer</h2>
@@ -10,7 +25,15 @@ async def new_ticket(request: Request):
         <input name="customer_phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
 
         <h2 style="color:#00C4B4">Device</h2>
-        <input name="device_type" placeholder="Type (Laptop/Phone/etc)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <select name="device_type" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+          <option value="">Select Type</option>
+          <option>Laptop</option>
+          <option>Desktop</option>
+          <option>Phone</option>
+          <option>Tablet</option>
+          <option>Console</option>
+          <option>Other</option>
+        </select>
         <input name="brand" placeholder="Brand" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <input name="model" placeholder="Model" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <input name="serial" placeholder="Serial/IMEI" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
@@ -25,6 +48,8 @@ async def new_ticket(request: Request):
           <label><input type="checkbox" name="faults" value="Slow Performance"> Slow Performance</label>
           <label><input type="checkbox" name="faults" value="Virus/Malware"> Virus/Malware</label>
           <label><input type="checkbox" name="faults" value="No WiFi"> No WiFi</label>
+          <label><input type="checkbox" name="faults" value="No Sound"> No Sound</label>
+          <label><input type="checkbox" name="faults" value="Overheating"> Overheating</label>
           <label><input type="checkbox" name="faults" value="Other"> Other</label>
         </div>
         <input name="other_fault" placeholder="Describe 'Other' fault" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
