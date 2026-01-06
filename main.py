@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
+# Booking page
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("booking.html", {"request": request})
@@ -29,10 +30,52 @@ async def book(
       We will contact you on {customer_phone}
     </p>
     <p style="text-align:center;margin-top:50px">
-      <a href="/">← Book Another</a>
+      <a href="/">← Book Another</a> | <a href="/admin">Admin Dashboard</a>
     </p>
     """)
 
+# Admin dashboard
 @app.get("/admin")
 async def admin(request: Request):
     return templates.TemplateResponse("admin_dashboard.html", {"request": request})
+
+# New forms (buttons work)
+@app.get("/new-customer")
+async def new_customer(request: Request):
+    return HTMLResponse("""
+    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Customer</h1>
+    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    """)
+
+@app.get("/new-ticket")
+async def new_ticket(request: Request):
+    return HTMLResponse("""
+    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Ticket</h1>
+    <p style="text-align:center;font-size:24px">Full repair form coming soon</p>
+    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    """)
+
+@app.get("/new-checkin")
+async def new_checkin(request: Request):
+    return HTMLResponse("""
+    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Check In</h1>
+    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    """)
+
+@app.get("/new-invoice")
+async def new_invoice(request: Request):
+    return HTMLResponse("""
+    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Invoice</h1>
+    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    """)
+
+@app.get("/new-estimate")
+async def new_estimate(request: Request):
+    return HTMLResponse("""
+    <h1 style="color:#00C4B4;text-align:center;margin-top:100px">+ New Estimate</h1>
+    <p style="text-align:center;font-size:24px">Form coming soon</p>
+    <p style="text-align:center"><a href="/admin">← Back to Dashboard</a></p>
+    """)
