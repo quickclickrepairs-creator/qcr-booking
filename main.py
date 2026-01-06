@@ -78,24 +78,14 @@ async def create_ticket(
     </p>
     """)
 
+@app.get("/new-checkin")
+async def new_checkin(request: Request):
+    return templates.TemplateResponse("new_checkin.html", {"request": request})
+
 @app.get("/new-invoice")
 async def new_invoice(request: Request):
     return templates.TemplateResponse("new_invoice.html", {"request": request})
 
-@app.post("/create-invoice")
-async def create_invoice(
-    customer_name: str = Form(...),
-    amount: float = Form(...),
-    description: str = Form("")
-):
-    return HTMLResponse(f"""
-    <h1 style="color:green;text-align:center;margin-top:100px">Invoice Created!</h1>
-    <h2 style="text-align:center">Customer: {customer_name}</h2>
-    <p style="text-align:center;font-size:24px">
-      Amount: £{amount:.2f}<br>
-      Description: {description}
-    </p>
-    <p style="text-align:center;margin-top:50px">
-      <a href="/admin">← Back to Dashboard</a>
-    </p>
-    """)
+@app.get("/new-estimate")
+async def new_estimate(request: Request):
+    return templates.TemplateResponse("new_estimate.html", {"request": request})
