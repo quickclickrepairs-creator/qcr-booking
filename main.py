@@ -33,6 +33,17 @@ metadata.create_all(engine)
 async def home(request: Request):
     return templates.TemplateResponse("booking.html", {"request": request})
 
+from fastapi import FastAPI, Form, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/")
+async def home(request: Request):
+    return templates.TemplateResponse("booking.html", {"request": request})
+
 @app.post("/book")
 async def book(
     customer_name: str = Form(...),
@@ -43,18 +54,6 @@ async def book(
     appointment_time: str = Form(...),
     description: str = Form("")
 ):
-    with engine.connect() as conn:
-        conn.execute(bookings.insert().values(
-            customer_name=customer_name,
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-            service_type=service_type,
-            appointment_date=appointment_date,
-            appointment_time=appointment_time,
-            description=description
-        ))
-        conn.commit()
-
     return HTMLResponse(f"""
     <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
     <h2 style="text-align:center">Thank you {customer_name}</h2>
@@ -68,7 +67,6 @@ async def book(
       <a href="/">← Book Another</a>
     </p>
     """)
-
 @app.get("/admin")
 async def admin(request: Request):
     with engine.connect() as conn:
