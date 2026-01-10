@@ -1,20 +1,25 @@
 from fastapi import FastAPI, Form, Request
-from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
-
-@app.get("/")
-async def home(request: Request):
-    return templates.TemplateResponse("booking.html", {"request": request})
 
 @app.get("/admin")
-async def admin(request: Request):
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request})
+async def admin():
+    return HTMLResponse("""
+    <div style="background:#1e1e1e;color:#e0e0e0;padding:20px;min-height:100vh">
+      <h1 style="text-align:center;color:#00C4B4">QCR Admin Dashboard</h1>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;max-width:1200px;margin:auto">
+        <a href="/new-ticket" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;text-align:center;font-weight:bold">+ New Ticket</a>
+        <div style="background:#444;color:#888;padding:30px;border-radius:12px;font-size:20px;text-align:center;font-weight:bold">+ New Customer (coming soon)</div>
+        <div style="background:#444;color:#888;padding:30px;border-radius:12px;font-size:20px;text-align:center;font-weight:bold">+ New Check In (coming soon)</div>
+        <div style="background:#444;color:#888;padding:30px;border-radius:12px;font-size:20px;text-align:center;font-weight:bold">+ New Invoice (coming soon)</div>
+        <div style="background:#444;color:#888;padding:30px;border-radius:12px;font-size:20px;text-align:center;font-weight:bold">+ New Estimate (coming soon)</div>
+      </div>
+    </div>
+    """)
 
 @app.get("/new-ticket")
-async def new_ticket(request: Request):
+async def new_ticket():
     return HTMLResponse("""
     <div style="max-width:900px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
       <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Ticket</h1>
@@ -28,16 +33,15 @@ async def new_ticket(request: Request):
         <select name="device_type" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
           <option value="">Select Type</option>
           <option>Laptop</option>
-          <option>Desktop</option>
           <option>Phone</option>
           <option>Tablet</option>
+          <option>Desktop</option>
           <option>Console</option>
           <option>Other</option>
         </select>
         <input name="brand" placeholder="Brand" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <input name="model" placeholder="Model" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <input name="serial" placeholder="Serial/IMEI" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="password" placeholder="Password/PIN" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
 
         <h2 style="color:#00C4B4">Faults (check all that apply)</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
@@ -54,12 +58,11 @@ async def new_ticket(request: Request):
         </div>
         <input name="other_fault" placeholder="Describe 'Other' fault" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
 
-        <h2 style="color:#00C4B4">Pricing</h2>
-        <input name="labour_price" type="number" step="0.01" placeholder="Labour £" value="45.00" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="parts_price" type="number" step="0.01" placeholder="Parts £" value="0.00" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <h2 style="color:#00C4B4">Accessories</h2>
+        <input name="accessories" placeholder="Accessories (charger, case, etc)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
 
-        <h2 style="color:#00C4B4">Notes</h2>
-        <textarea name="notes" rows="4" placeholder="Additional notes" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white"></textarea>
+        <h2 style="color:#00C4B4">Estimated Repair Cost</h2>
+        <input name="estimated_cost" type="number" step="0.01" placeholder="Estimated Cost £" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
 
         <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">CREATE TICKET</button>
       </form>
@@ -79,11 +82,9 @@ async def create_ticket(
     password: str = Form(""),
     faults: list[str] = Form([]),
     other_fault: str = Form(""),
-    labour_price: float = Form(45.0),
-    parts_price: float = Form(0.0),
-    notes: str = Form("")
+    accessories: str = Form(""),
+    estimated_cost: float = Form(0.0)
 ):
-    total = labour_price + parts_price
     all_faults = ", ".join(faults)
     if other_fault:
         all_faults += f", {other_fault}"
@@ -95,9 +96,8 @@ async def create_ticket(
         Device: {brand} {model} ({device_type})<br>
         Serial: {serial}<br>
         Faults: {all_faults or 'None specified'}<br>
-        Labour: £{labour_price:.2f}<br>
-        Parts: £{parts_price:.2f}<br>
-        <strong>Total: £{total:.2f}</strong>
+        Accessories: {accessories or 'None'}<br>
+        <strong>Estimated Repair Cost: £{estimated_cost:.2f}</strong>
       </p>
       <p style="text-align:center;margin-top:50px">
         <a href="/admin" style="color:#00C4B4">← Back to Dashboard</a>
