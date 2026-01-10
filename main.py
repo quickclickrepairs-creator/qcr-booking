@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * {margin:0;padding:0;box-sizing:border-box}
-    body {font-family: 'Segoe UI', Arial, sans-serif; background:#1e1e1e; color:#e0e0e0}
+    body {font-family: 'Segoe UI', Arial, sans-serif; background:#1e1e1e; color:#e0e0e0; margin:0}
     header {background:#000; padding:15px 30px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 10px rgba(0,0,0,0.5)}
     header h1 {color:#fff; font-size:24px}
     .search {background:#333; border-radius:20px; padding:8px 15px; color:white; border:none; width:300px}
