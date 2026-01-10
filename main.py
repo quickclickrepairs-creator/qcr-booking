@@ -45,4 +45,31 @@
       <ul>
         <li><a href="#">Organizations</a></li>
         <li><a href="#">Invoices</a></li>
-        <li>
+        <li><a href="#">Customer Purchases</a></li>
+        <li><a href="#">Refurbs</a></li>
+        <li><a href="#">Tickets</a></li>
+        <li><a href="#">Parts</a></li>
+        <li><a href="#">More</a></li>
+      </ul>
+    </nav>
+    <div class="content">
+      <div class="welcome">Welcome!</div>
+      <div class="get-started">
+        <a href="/new-customer" class="btn"><span class="icon">👤</span> + New Customer</a>
+        <a href="/new-ticket" class="btn"><span class="icon">✔</span> + New Ticket</a>
+        <a href="/new-checkin" class="btn"><span class="icon">📱</span> + New Check In</a>
+        <a href="/new-invoice" class="btn"><span class="icon">🛒</span> + New Invoice</a>
+        <a href="/new-estimate" class="btn"><span class="icon">📄</span> + New Estimate</a>
+      </div>
+      <div class="reminders">
+        <h2>REMINDERS</h2>
+        <table>
+          <tr><th>MESSAGE</th><th>TIME</th><th>TECH</th><th>CUSTOMER</th></tr>
+          <tr><td>No reminders yet</td><td>-</td><td>-</td><td>-</td></tr>
+        </table>
+        <button style="margin-top:20px;padding:10px 20px;background:#00C4B4;color:white;border:none;border-radius:8px;cursor:pointer">View All</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
