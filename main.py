@@ -1,111 +1,124 @@
-from fastapi import FastAPI, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime, text
+from fastapi import FastAPI, Form, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from sqlalchemy import create_engine, text
 from datetime import datetime
-import os
-import smtplib
-from email.mime.text import MIMEText
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from twilio.rest import Client
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Database (use Render env var for production)
+# Database (Render provides DATABASE_URL env var)
+import os
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
 engine = create_engine(DATABASE_URL)
-metadata = MetaData()
 
-# Tables
-bookings = Table("bookings", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("customer_name", String),
-    Column("customer_email", String),
-    Column("customer_phone", String),
-    Column("service_type", String),
-    Column("appointment_date", String),
-    Column("appointment_time", String),
-    Column("description", String),
-    Column("created_at", DateTime, default=datetime.utcnow)
-)
+# Create bookings table if not exists
+with engine.connect() as conn:
+    conn.execute(text("""
+    CREATE TABLE IF NOT EXISTS bookings (
+        id SERIAL PRIMARY KEY,
+        customer_name VARCHAR(255),
+        customer_email VARCHAR(255),
+        customer_phone VARCHAR(50),
+        service_type VARCHAR(255),
+        appointment_date VARCHAR(50),
+        appointment_time VARCHAR(50),
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """))
+    conn.commit()
 
-tickets = Table("tickets", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("customer_name", String),
-    Column("customer_email", String),
-    Column("customer_phone", String),
-    Column("device_type", String),
-    Column("brand", String),
-    Column("model", String),
-    Column("serial", String),
-    Column("faults", String),
-    Column("other_fault", String),
-    Column("accessories", String),
-    Column("estimated_cost", Float),
-    Column("created_at", DateTime, default=datetime.utcnow)
-)
-
-customers = Table("customers", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("name", String),
-    Column("email", String),
-    Column("phone", String),
-    Column("address", String),
-    Column("notes", String),
-    Column("created_at", DateTime, default=datetime.utcnow)
-)
-
-metadata.create_all(engine)
-
-# Login (change in production!)
-ADMIN_USER = "alan"
-ADMIN_PASS = "qcr123"
-
-# Secrets (use Render env vars!)
-GMAIL_USER = os.getenv("GMAIL_USER", "your.email@gmail.com")
-GMAIL_PASS = os.getenv("GMAIL_PASS", "your-app-password")
-TWILIO_SID = os.getenv("TWILIO_SID")
-TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
-YOUR_WHATSAPP = "whatsapp:+447863743275"
-
-@app.get("/login")
-async def login_page():
+@app.get("/")
+async def home(request: Request):
     return HTMLResponse("""
-    <div style="max-width:400px;margin:100px auto;text-align:center">
-      <h1 style="color:#00C4B4">Admin Login</h1>
-      <form action="/login" method="post">
-        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
-        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
-        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
+    <div style="max-width:600px;margin:auto;background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2);margin-top:50px">
+      <h1 style="text-align:center;color:#00C4B4">Quick Click Repairs</h1>
+      <h2 style="text-align:center">Book Your Appointment</h2>
+      <form action="/book" method="post">
+        <input name="customer_name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+        <input name="customer_email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+        <input name="customer_phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+        <select name="service_type" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+          <option value="">Select Service</option>
+          <option>Laptop Repair</option>
+          <option>Desktop/PC Repair</option>
+          <option>Screen Replacement</option>
+          <option>Virus Removal</option>
+          <option>Data Recovery</option>
+          <option>Other</option>
+        </select>
+        <input name="appointment_date" type="date" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+        <select name="appointment_time" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc" required>
+          <option value="">Preferred Time</option>
+          <option>09:00 – 10:00</option>
+          <option>10:00 – 11:00</option>
+          <option>11:00 – 12:00</option>
+          <option>13:00 – 14:00</option>
+          <option>14:00 – 15:00</option>
+          <option>15:00 – 16:00</option>
+          <option>16:00 – 17:00</option>
+        </select>
+        <textarea name="description" rows="4" placeholder="Describe the problem (optional)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;border:1px solid #ccc"></textarea>
+        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;cursor:pointer">BOOK APPOINTMENT</button>
       </form>
     </div>
     """)
 
-@app.post("/login")
-async def do_login(username: str = Form(...), password: str = Form(...)):
-    if username == ADMIN_USER and password == ADMIN_PASS:
-        return RedirectResponse("/admin", status_code=303)
-    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/login'>← Try again</a></p>")
+@app.post("/book")
+async def book(
+    customer_name: str = Form(...),
+    customer_email: str = Form(...),
+    customer_phone: str = Form(...),
+    service_type: str = Form(...),
+    appointment_date: str = Form(...),
+    appointment_time: str = Form(...),
+    description: str = Form("")
+):
+    # Save to database
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO bookings (customer_name, customer_email, customer_phone, service_type, appointment_date, appointment_time, description)
+            VALUES (:name, :email, :phone, :service, :date, :time, :desc)
+        """), {
+            "name": customer_name,
+            "email": customer_email,
+            "phone": customer_phone,
+            "service": service_type,
+            "date": appointment_date,
+            "time": appointment_time,
+            "desc": description
+        })
+        conn.commit()
+
+    return HTMLResponse(f"""
+    <div style="max-width:600px;margin:auto;background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2);margin-top:50px">
+      <h1 style="color:green;text-align:center">Appointment Booked!</h1>
+      <h2 style="text-align:center">Thank you {customer_name}</h2>
+      <p style="text-align:center;font-size:24px">
+        Service: {service_type}<br>
+        Date: {appointment_date}<br>
+        Time: {appointment_time}<br>
+        We will contact you on {customer_phone}
+      </p>
+      <p style="text-align:center;margin-top:50px">
+        <a href="/" style="color:#00C4B4">← Book Another</a> | <a href="/admin" style="color:#00C4B4">Admin Dashboard</a>
+      </p>
+    </div>
+    """)
 
 @app.get("/admin")
 async def admin():
     with engine.connect() as conn:
-        b = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC")).fetchall()
-        t = conn.execute(text("SELECT * FROM tickets ORDER BY created_at DESC")).fetchall()
-        c = conn.execute(text("SELECT * FROM customers ORDER BY created_at DESC")).fetchall()
-    booking_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.customer_name}</td><td>{x.customer_email}</td><td>{x.customer_phone}</td><td>{x.service_type}</td><td>{x.appointment_date}</td><td>{x.appointment_time}</td><td>{x.description or ''}</td><td>{x.created_at}</td></tr>" for x in b) or "<tr><td colspan='9'>No bookings</td></tr>"
-    ticket_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.customer_name}</td><td>{x.device_type}</td><td>{x.brand} {x.model}</td><td>£{x.estimated_cost:.2f}</td><td>{x.created_at}</td></tr>" for x in t) or "<tr><td colspan='6'>No tickets</td></tr>"
-    customer_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.name}</td><td>{x.email}</td><td>{x.phone}</td><td>{x.created_at}</td></tr>" for x in c) or "<tr><td colspan='5'>No customers</td></tr>"
+        result = conn.execute(text("SELECT id, customer_name, customer_email, customer_phone, service_type, appointment_date, appointment_time, description, created_at FROM bookings ORDER BY created_at DESC"))
+        bookings = result.fetchall()
+    rows = ""
+    for b in bookings:
+        rows += f"<tr><td>{b.id}</td><td>{b.customer_name}</td><td>{b.customer_email}</td><td>{b.customer_phone}</td><td>{b.service_type}</td><td>{b.appointment_date}</td><td>{b.appointment_time}</td><td>{b.description or ''}</td><td>{b.created_at}</td></tr>"
     return HTMLResponse(f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Quick Click Repairs – Dashboard</title>
+      <title>QCR – Admin Dashboard</title>
       <style>
         * {margin:0;padding:0;box-sizing:border-box}
         body {font-family: 'Segoe UI', Arial, sans-serif; background:#1e1e1e; color:#e0e0e0; margin:0}
@@ -145,52 +158,33 @@ async def admin():
       <div class="main">
         <nav>
           <ul>
-            <li><a href="/organizations">Organizations</a></li>
-            <li><a href="/invoices">Invoices</a></li>
-            <li><a href="/customer-purchases">Customer Purchases</a></li>
-            <li><a href="/refurbs">Refurbs</a></li>
-            <li><a href="/tickets">Tickets</a></li>
-            <li><a href="/parts">Parts</a></li>
-            <li><a href="/more">More</a></li>
+            <li><a href="#">Organizations</a></li>
+            <li><a href="#">Invoices</a></li>
+            <li><a href="#">Customer Purchases</a></li>
+            <li><a href="#">Refurbs</a></li>
+            <li><a href="#">Tickets</a></li>
+            <li><a href="#">Parts</a></li>
+            <li><a href="#">More</a></li>
           </ul>
         </nav>
         <div class="content">
           <div class="welcome">Welcome!</div>
           <div class="get-started">
-            <a href="/new-customer" class="btn"><span class="icon">👤</span> + New Customer</a>
-            <a href="/new-ticket" class="btn"><span class="icon">✔</span> + New Ticket</a>
-            <a href="/new-checkin" class="btn"><span class="icon">📱</span> + New Check In</a>
-            <a href="/new-invoice" class="btn"><span class="icon">🛒</span> + New Invoice</a>
-            <a href="/new-estimate" class="btn"><span class="icon">📄</span> + New Estimate</a>
+            <a href="#" class="btn"><span class="icon">👤</span> + New Customer</a>
+            <a href="#" class="btn"><span class="icon">✔</span> + New Ticket</a>
+            <a href="#" class="btn"><span class="icon">📱</span> + New Check In</a>
+            <a href="#" class="btn"><span class="icon">🛒</span> + New Invoice</a>
+            <a href="#" class="btn"><span class="icon">📄</span> + New Estimate</a>
           </div>
           <div class="reminders">
-            <h2>REMINDERS</h2>
+            <h2>All Bookings ({len(bookings)})</h2>
             <table>
-              <tr><th>MESSAGE</th><th>TIME</th><th>TECH</th><th>CUSTOMER</th></tr>
-              <tr><td>No reminders yet</td><td>-</td><td>-</td><td>-</td></tr>
+              <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date</th><th>Time</th><th>Description</th><th>Booked At</th></tr>
+              {rows or "<tr><td colspan='9' style='text-align:center'>No bookings yet</td></tr>"}
             </table>
-            <button style="margin-top:20px;padding:10px 20px;background:#00C4B4;color:white;border:none;border-radius:8px;cursor:pointer">View All</button>
           </div>
-          <h2>All Bookings</h2>
-          <table>
-            <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date</th><th>Time</th><th>Description</th><th>Booked</th></tr>
-            {booking_rows}
-          </table>
-          <h2>All Tickets</h2>
-          <table>
-            <tr><th>ID</th><th>Customer</th><th>Device</th><th>Est. Cost</th><th>Created</th></tr>
-            {ticket_rows}
-          </table>
-          <h2>All Customers</h2>
-          <table>
-            <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Created</th></tr>
-            {customer_rows}
-          </table>
-          <p style="text-align:center;margin-top:50px"><a href="/calendar" style="color:#00C4B4">Calendar</a> | <a href="/login" style="color:#00C4B4">Logout</a></p>
         </div>
       </div>
     </body>
     </html>
     """)
-
-# ... (add the other routes from previous messages for new-customer, new-ticket, etc.)
