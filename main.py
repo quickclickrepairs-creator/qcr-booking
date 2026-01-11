@@ -1,193 +1,238 @@
-from fastapi import FastAPI, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime, text
-from datetime import datetime
-import os
-import smtplib
-from email.mime.text import MIMEText
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from twilio.rest import Client
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Database (Render sets DATABASE_URL)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
-engine = create_engine(DATABASE_URL)
-metadata = MetaData()
-
-bookings = Table("bookings", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("customer_name", String),
-    Column("customer_email", String),
-    Column("customer_phone", String),
-    Column("service_type", String),
-    Column("appointment_date", String),
-    Column("appointment_time", String),
-    Column("description", String),
-    Column("created_at", DateTime, default=datetime.utcnow)
-)
-
-tickets = Table("tickets", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("customer_name", String),
-    Column("customer_email", String),
-    Column("customer_phone", String),
-    Column("device_type", String),
-    Column("brand", String),
-    Column("model", String),
-    Column("serial", String),
-    Column("faults", String),
-    Column("other_fault", String),
-    Column("accessories", String),
-    Column("estimated_cost", Float),
-    Column("created_at", DateTime, default=datetime.utcnow)
-)
-
-metadata.create_all(engine)
-
-# Login credentials (change these!)
-ADMIN_USER = "alan"
-ADMIN_PASS = "qcr123"
-
-# Email (Gmail - use App Password, not regular password)
-GMAIL_USER = "your.email@gmail.com"
-GMAIL_PASS = "your-app-password"  # Create at https://myaccount.google.com/apppasswords
-
-# Twilio for WhatsApp (your own number)
-TWILIO_SID = "your_twilio_sid"
-TWILIO_TOKEN = "your_twilio_auth_token"
-YOUR_WHATSAPP = "whatsapp:+44YOURNUMBER"  # e.g., whatsapp:+447123456789
-
-@app.get("/login")
-async def login_page():
-    return HTMLResponse("""
-    <div style="max-width:400px;margin:100px auto;text-align:center">
-      <h1 style="color:#00C4B4">Admin Login</h1>
-      <form action="/login" method="post">
-        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
-        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
-        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
-      </form>
-    </div>
-    """)
-
-@app.post("/login")
-async def do_login(username: str = Form(...), password: str = Form(...)):
-    if username == ADMIN_USER and password == ADMIN_PASS:
-        return RedirectResponse("/admin", status_code=303)
-    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/login'>← Try again</a></p>")
 
 @app.get("/admin")
-async def admin(request: Request):
-    with engine.connect() as conn:
-        bookings = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC")).fetchall()
-        tickets = conn.execute(text("SELECT * FROM tickets ORDER BY created_at DESC")).fetchall()
-    booking_rows = ""
-    for b in bookings:
-        booking_rows += f"<tr><td>{b.id}</td><td>{b.customer_name}</td><td>{b.customer_email}</td><td>{b.customer_phone}</td><td>{b.service_type}</td><td>{b.appointment_date}</td><td>{b.appointment_time}</td><td>{b.description or ''}</td><td>{b.created_at}</td></tr>"
-    ticket_rows = ""
-    for t in tickets:
-        ticket_rows += f"<tr><td>{t.id}</td><td>{t.customer_name}</td><td>{t.device_type}</td><td>{t.brand} {t.model}</td><td>{t.estimated_cost}</td><td>{t.created_at}</td></tr>"
-    return HTMLResponse(f"""
-    <style>
-      body {{font-family:'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:20px}}
-      .header {{background:#000;color:white;padding:20px;text-align:center;border-radius:12px}}
-      .content {{max-width:1200px;margin:auto}}
-      table {{width:100%;border-collapse:collapse;margin-top:30px;background:white;box-shadow:0 4px 10px rgba(0,0,0,0.1)}}
-      th {{background:#00C4B4;color:white;padding:15px}}
-      td {{padding:15px;border-bottom:1px solid #eee}}
-      tr:hover {{background:#f0f8ff}}
-    </style>
-    <div class="header">
-      <h1>QCR Admin Dashboard</h1>
-    </div>
-    <div class="content">
-      <h2>All Bookings ({len(bookings)})</h2>
-      <table>
-        <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date</th><th>Time</th><th>Description</th><th>Booked At</th></tr>
-        {booking_rows or "<tr><td colspan='9' style='text-align:center'>No bookings yet</td></tr>"}
-      </table>
-      <h2>All Tickets ({len(tickets)})</h2>
-      <table>
-        <tr><th>ID</th><th>Customer</th><th>Device</th><th>Brand/Model</th><th>Est. Cost</th><th>Created</th></tr>
-        {ticket_rows or "<tr><td colspan='6' style='text-align:center'>No tickets yet</td></tr>"}
-      </table>
-      <p style="text-align:center;margin-top:50px"><a href="/calendar" style="color:#00C4B4">View Calendar</a> | <a href="/login" style="color:#00C4B4">Logout</a></p>
+async def admin():
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Quick Click Repairs – Dashboard</title>
+      <style>
+        * {margin:0;padding:0;box-sizing:border-box}
+        body {font-family: 'Segoe UI', Arial, sans-serif; background:#1e1e1e; color:#e0e0e0; margin:0}
+        header {background:#000; padding:15px 30px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 10px rgba(0,0,0,0.5)}
+        header h1 {color:#fff; font-size:24px}
+        .search {background:#333; border-radius:20px; padding:8px 15px; color:white; border:none; width:300px}
+        .user {display:flex; align-items:center; gap:10px}
+        .user img {width:40px; height:40px; border-radius:50%}
+        nav {background:#2a2a2a; padding:20px; min-width:200px}
+        nav ul {list-style:none}
+        nav li {margin:10px 0}
+        nav a {color:#aaa; text-decoration:none; font-size:16px; display:block; padding:10px; border-radius:8px}
+        nav a:hover {background:#00C4B4; color:white}
+        .main {display:flex}
+        .content {flex:1; padding:30px}
+        .welcome {font-size:36px; margin-bottom:40px}
+        .get-started {display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; margin-bottom:40px}
+        .btn {background:#00C4B4; color:white; padding:30px; border-radius:12px; text-decoration:none; font-size:20px; font-weight:bold; text-align:center; display:flex; align-items:center; justify-content:center; gap:15px}
+        .btn:hover {background:#00a89a}
+        .icon {font-size:32px}
+        .reminders {background:#2a2a2a; padding:25px; border-radius:12px}
+        .reminders h2 {margin-bottom:20px}
+        table {width:100%; border-collapse:collapse}
+        th {background:#00C4B4; color:white; padding:12px; text-align:left}
+        td {padding:12px; border-bottom:1px solid #444}
+      </style>
+    </head>
+    <body>
+      <header>
+        <h1>Quick Click Repairs</h1>
+        <input type="text" placeholder="Search all the things" class="search">
+        <div class="user">
+          <span>Alan ▼</span>
+          <img src="https://i.imgur.com/placeholder-user.jpg" alt="User">
+        </div>
+      </header>
+      <div class="main">
+        <nav>
+          <ul>
+            <li><a href="/organizations" style="color:#aaa;text-decoration:none">Organizations</a></li>
+            <li><a href="/invoices" style="color:#aaa;text-decoration:none">Invoices</a></li>
+            <li><a href="/customer-purchases" style="color:#aaa;text-decoration:none">Customer Purchases</a></li>
+            <li><a href="/refurbs" style="color:#aaa;text-decoration:none">Refurbs</a></li>
+            <li><a href="/tickets" style="color:#aaa;text-decoration:none">Tickets</a></li>
+            <li><a href="/parts" style="color:#aaa;text-decoration:none">Parts</a></li>
+            <li><a href="/more" style="color:#aaa;text-decoration:none">More</a></li>
+          </ul>
+        </nav>
+        <div class="content">
+          <div class="welcome">Welcome!</div>
+          <div class="get-started">
+            <a href="/new-customer" class="btn"><span class="icon">👤</span> + New Customer</a>
+            <a href="/new-ticket" class="btn"><span class="icon">✔</span> + New Ticket</a>
+            <a href="/new-checkin" class="btn"><span class="icon">📱</span> + New Check In</a>
+            <a href="/new-invoice" class="btn"><span class="icon">🛒</span> + New Invoice</a>
+            <a href="/new-estimate" class="btn"><span class="icon">📄</span> + New Estimate</a>
+          </div>
+          <div class="reminders">
+            <h2>REMINDERS</h2>
+            <table>
+              <tr><th>MESSAGE</th><th>TIME</th><th>TECH</th><th>CUSTOMER</th></tr>
+              <tr><td>No reminders yet</td><td>-</td><td>-</td><td>-</td></tr>
+            </table>
+            <button style="margin-top:20px;padding:10px 20px;background:#00C4B4;color:white;border:none;border-radius:8px;cursor:pointer">View All</button>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """)
+
+# Real forms for all buttons (no more "coming soon")
+@app.get("/new-customer")
+async def new_customer():
+    return HTMLResponse("""
+    <div style="max-width:600px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
+      <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Customer</h1>
+      <form action="/create-customer" method="post">
+        <input name="name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="address" placeholder="Address" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <textarea name="notes" rows="4" placeholder="Notes (optional)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white"></textarea>
+        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">SAVE CUSTOMER</button>
+      </form>
+      <p style="text-align:center;margin-top:30px"><a href="/admin" style="color:#00C4B4">← Back to Dashboard</a></p>
     </div>
     """)
 
-@app.get("/calendar")
-async def calendar():
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT appointment_date, COUNT(*) FROM bookings GROUP BY appointment_date"))
-        dates = result.fetchall()
-    calendar_html = "<h2 style='text-align:center;color:#00C4B4'>Appointment Calendar</h2><table style='margin:auto;width:80%;border-collapse:collapse'>"
-    calendar_html += "<tr><th>Date</th><th>Bookings</th></tr>"
-    for date, count in dates:
-        calendar_html += f"<tr><td>{date}</td><td>{count}</td></tr>"
-    calendar_html += "</table><p style='text-align:center'><a href='/admin'>← Back to Dashboard</a></p>"
-    return HTMLResponse(calendar_html)
+@app.post("/create-customer")
+async def create_customer(name: str = Form(...), email: str = Form(...), phone: str = Form(...), address: str = Form(""), notes: str = Form("")):
+    return HTMLResponse(f"""
+    <div style="max-width:600px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
+      <h1 style="color:green;text-align:center">Customer Created!</h1>
+      <h2 style="text-align:center">{name}</h2>
+      <p style="text-align:center;font-size:24px">
+        Email: {email}<br>
+        Phone: {phone}<br>
+        Address: {address or 'Not provided'}<br>
+        Notes: {notes or 'None'}
+      </p>
+      <p style="text-align:center;margin-top:50px">
+        <a href="/admin" style="color:#00C4B4">← Back to Dashboard</a>
+      </p>
+    </div>
+    """)
 
-@app.post("/book")
-async def book(
+@app.get("/new-ticket")
+async def new_ticket():
+    return HTMLResponse("""
+    <div style="max-width:900px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
+      <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Ticket</h1>
+      <form action="/create-ticket" method="post">
+        <h2 style="color:#00C4B4">Customer</h2>
+        <input name="customer_name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="customer_email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="customer_phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        
+        <h2 style="color:#00C4B4">Device</h2>
+        <select name="device_type" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+          <option value="">Select Type</option>
+          <option>Laptop</option>
+          <option>Phone</option>
+          <option>Tablet</option>
+          <option>Desktop</option>
+          <option>Other</option>
+        </select>
+        <input name="brand" placeholder="Brand" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="model" placeholder="Model" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="serial" placeholder="Serial/IMEI" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Faults (check all that apply)</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+          <label><input type="checkbox" name="faults" value="No Power"> No Power</label>
+          <label><input type="checkbox" name="faults" value="Won't Charge"> Won't Charge</label>
+          <label><input type="checkbox" name="faults" value="Cracked Screen"> Cracked Screen</label>
+          <label><input type="checkbox" name="faults" value="Liquid Damage"> Liquid Damage</label>
+          <label><input type="checkbox" name="faults" value="Slow Performance"> Slow Performance</label>
+          <label><input type="checkbox" name="faults" value="Virus/Malware"> Virus/Malware</label>
+          <label><input type="checkbox" name="faults" value="Other"> Other</label>
+        </div>
+        <input name="other_fault" placeholder="Describe 'Other' fault" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Accessories</h2>
+        <input name="accessories" placeholder="Accessories (charger, case, etc)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <h2 style="color:#00C4B4">Estimated Repair Cost</h2>
+        <input name="estimated_cost" type="number" step="0.01" placeholder="Estimated Cost £" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        
+        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">CREATE TICKET</button>
+      </form>
+      <p style="text-align:center;margin-top:30px"><a href="/admin" style="color:#00C4B4">← Back to Dashboard</a></p>
+    </div>
+    """)
+
+@app.post("/create-ticket")
+async def create_ticket(
     customer_name: str = Form(...),
     customer_email: str = Form(...),
     customer_phone: str = Form(...),
-    service_type: str = Form(...),
-    appointment_date: str = Form(...),
-    appointment_time: str = Form(...),
-    description: str = Form("")
+    device_type: str = Form(...),
+    brand: str = Form(...),
+    model: str = Form(...),
+    serial: str = Form(""),
+    accessories: str = Form(""),
+    estimated_cost: float = Form(0.0)
 ):
-    with engine.connect() as conn:
-        conn.execute(bookings.insert().values(
-            customer_name=customer_name,
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-            service_type=service_type,
-            appointment_date=appointment_date,
-            appointment_time=appointment_time,
-            description=description
-        ))
-        conn.commit()
-
-    # Email confirmation
-    try:
-        msg = MIMEText(f"Hi {customer_name}!\nYour appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you!")
-        msg['Subject'] = "Appointment Confirmation - Quick Click Repairs"
-        msg['From'] = GMAIL_USER
-        msg['To'] = customer_email
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_PASS)
-            server.send_message(msg)
-    except Exception as e:
-        print("Email error:", str(e))
-
-    # WhatsApp confirmation from your number
-    try:
-        client = Client(TWILIO_SID, TWILIO_TOKEN)
-        message = client.messages.create(
-            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!",
-            from_=YOUR_WHATSAPP,
-            to=f"whatsapp:+44{customer_phone.lstrip('0')}"
-        )
-        print("WhatsApp sent:", message.sid)
-    except Exception as e:
-        print("WhatsApp error:", str(e))
-
     return HTMLResponse(f"""
-    <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
-    <h2 style="text-align:center">Thank you {customer_name}</h2>
-    <p style="text-align:center;font-size:24px">
-      Service: {service_type}<br>
-      Date: {appointment_date}<br>
-      Time: {appointment_time}<br>
-      We will contact you on {customer_phone}
-    </p>
-    <p style="text-align:center;margin-top:50px">
-      <a href="/">← Book Another</a> | <a href="/admin">Admin Dashboard</a>
-    </p>
+    <div style="max-width:800px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
+      <h1 style="color:green;text-align:center">TICKET CREATED!</h1>
+      <h2 style="text-align:center">Customer: {customer_name}</h2>
+      <p style="text-align:center;font-size:24px">
+        Device: {brand} {model} ({device_type})<br>
+        Serial: {serial}<br>
+        Accessories: {accessories or 'None'}<br>
+        <strong>Estimated Repair Cost: £{estimated_cost:.2f}</strong>
+      </p>
+      <p style="text-align:center;margin-top:50px">
+        <a href="/admin" style="color:#00C4B4">← Back to Dashboard</a>
+      </p>
+    </div>
     """)
+
+# Other buttons (placeholder pages - no Not Found)
+@app.get("/new-checkin")
+async def new_checkin():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Check In</h1><p style='text-align:center'>Check-in form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/new-invoice")
+async def new_invoice():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Invoice</h1><p style='text-align:center'>Invoice form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/new-estimate")
+async def new_estimate():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Estimate</h1><p style='text-align:center'>Estimate form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+# Sidebar links (real pages - no Not Found)
+@app.get("/organizations")
+async def organizations():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Organizations</h1><p style='text-align:center'>Manage organizations here</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/invoices")
+async def invoices():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Invoices</h1><p style='text-align:center'>View and create invoices</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/customer-purchases")
+async def customer_purchases():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Customer Purchases</h1><p style='text-align:center'>View purchase history</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/refurbs")
+async def refurbs():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Refurbs</h1><p style='text-align:center'>Manage refurbished items</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/tickets")
+async def tickets():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Tickets</h1><p style='text-align:center'>View all repair tickets</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/parts")
+async def parts():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Parts</h1><p style='text-align:center'>Manage parts inventory</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+
+@app.get("/more")
+async def more():
+    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>More</h1><p style='text-align:center'>Additional tools & settings</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
