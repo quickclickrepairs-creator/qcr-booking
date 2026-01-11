@@ -155,6 +155,7 @@ async def book(
     appointment_time: str = Form(...),
     description: str = Form("")
 ):
+    # Save to database (your existing code)
     with engine.connect() as conn:
         conn.execute(bookings.insert().values(
             customer_name=customer_name,
@@ -167,7 +168,7 @@ async def book(
         ))
         conn.commit()
 
-    # Email
+    # Email (your existing code)
     try:
         msg = MIMEText(f"Hi {customer_name}!\nYour appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you!")
         msg['Subject'] = "Appointment Confirmation - Quick Click Repairs"
@@ -176,26 +177,23 @@ async def book(
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_USER, GMAIL_PASS)
             server.send_message(msg)
-    except:
-        pass
-
-    # WhatsApp
-    try:
-           # Auto WhatsApp confirmation from your own number
-    try:
-        client = Client("YOUR_TWILIO_ACCOUNT_SID", "YOUR_TWILIO_AUTH_TOKEN")
-        message = client.messages.create(
-            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!\nReply here if you need to change anything.",
-            from_="whatsapp:+447863743275",  # Your approved number
-            to=f"whatsapp:+44{customer_phone.lstrip('0')}"  # Customer's UK number
-        )
-        print("WhatsApp sent:", message.sid)  # For debug in Render logs
     except Exception as e:
-        print("WhatsApp error:", str(e))  # For debug
-        )
-    except:
-        pass
+        print("Email error:", str(e))
 
+    # WhatsApp - SAFE VERSION with env vars
+    try:
+        from twilio.rest import Client
+        client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+        message = client.messages.create(
+            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!",
+            from_="whatsapp:+447863743275",
+            to=f"whatsapp:+44{customer_phone.lstrip('0')}"
+        )
+        print("WhatsApp sent:", message.sid)
+    except Exception as e:
+        print("WhatsApp error:", str(e))
+
+    # Return confirmation page
     return HTMLResponse(f"""
     <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
     <h2 style="text-align:center">Thank you {customer_name}!</h2>
@@ -208,33 +206,4 @@ async def book(
     <p style="text-align:center;margin-top:50px">
       <a href="/">← Book Another</a>
     </p>
-    """)
-    @app.post("/book")
-async def book(
-    customer_name: str = Form(...),
-    customer_email: str = Form(...),
-    customer_phone: str = Form(...),
-    service_type: str = Form(...),
-    appointment_date: str = Form(...),
-    appointment_time: str = Form(...),
-    description: str = Form("")
-):
-    # Confirmation page - success message
-    return HTMLResponse(f"""
-    <html>
-    <head><title>Booked!</title></head>
-    <body style="font-family:Arial;background:#f0f8ff;text-align:center;padding:50px">
-      <h1 style="color:green">Appointment Booked!</h1>
-      <h2>Thank you {customer_name}!</h2>
-      <p style="font-size:24px">
-        Service: <strong>{service_type}</strong><br>
-        Date: <strong>{appointment_date}</strong><br>
-        Time: <strong>{appointment_time}</strong><br>
-        We will contact you on <strong>{customer_phone}</strong>
-      </p>
-      <p style="margin-top:50px">
-        <a href="/" style="color:#00C4B4;font-size:20px">← Book Another Appointment</a>
-      </p>
-    </body>
-    </html>
     """)
