@@ -1,12 +1,105 @@
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, Request, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime, text
+from datetime import datetime
+import os
+import smtplib
+from email.mime.text import MIMEText
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from twilio.rest import Client
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# FULL DASHBOARD (beautiful dark layout from your screenshot)
+# Database (use Render env var for production)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
+engine = create_engine(DATABASE_URL)
+metadata = MetaData()
+
+# Tables
+bookings = Table("bookings", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("customer_name", String),
+    Column("customer_email", String),
+    Column("customer_phone", String),
+    Column("service_type", String),
+    Column("appointment_date", String),
+    Column("appointment_time", String),
+    Column("description", String),
+    Column("created_at", DateTime, default=datetime.utcnow)
+)
+
+tickets = Table("tickets", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("customer_name", String),
+    Column("customer_email", String),
+    Column("customer_phone", String),
+    Column("device_type", String),
+    Column("brand", String),
+    Column("model", String),
+    Column("serial", String),
+    Column("faults", String),
+    Column("other_fault", String),
+    Column("accessories", String),
+    Column("estimated_cost", Float),
+    Column("created_at", DateTime, default=datetime.utcnow)
+)
+
+customers = Table("customers", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+    Column("email", String),
+    Column("phone", String),
+    Column("address", String),
+    Column("notes", String),
+    Column("created_at", DateTime, default=datetime.utcnow)
+)
+
+metadata.create_all(engine)
+
+# Login (change in production!)
+ADMIN_USER = "alan"
+ADMIN_PASS = "qcr123"
+
+# Secrets (use Render env vars!)
+GMAIL_USER = os.getenv("GMAIL_USER", "your.email@gmail.com")
+GMAIL_PASS = os.getenv("GMAIL_PASS", "your-app-password")
+TWILIO_SID = os.getenv("TWILIO_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
+YOUR_WHATSAPP = "whatsapp:+447863743275"
+
+@app.get("/login")
+async def login_page():
+    return HTMLResponse("""
+    <div style="max-width:400px;margin:100px auto;text-align:center">
+      <h1 style="color:#00C4B4">Admin Login</h1>
+      <form action="/login" method="post">
+        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
+        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
+        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
+      </form>
+    </div>
+    """)
+
+@app.post("/login")
+async def do_login(username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        return RedirectResponse("/admin", status_code=303)
+    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/login'>← Try again</a></p>")
+
 @app.get("/admin")
 async def admin():
-    return HTMLResponse("""
+    with engine.connect() as conn:
+        b = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC")).fetchall()
+        t = conn.execute(text("SELECT * FROM tickets ORDER BY created_at DESC")).fetchall()
+        c = conn.execute(text("SELECT * FROM customers ORDER BY created_at DESC")).fetchall()
+    booking_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.customer_name}</td><td>{x.customer_email}</td><td>{x.customer_phone}</td><td>{x.service_type}</td><td>{x.appointment_date}</td><td>{x.appointment_time}</td><td>{x.description or ''}</td><td>{x.created_at}</td></tr>" for x in b) or "<tr><td colspan='9'>No bookings</td></tr>"
+    ticket_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.customer_name}</td><td>{x.device_type}</td><td>{x.brand} {x.model}</td><td>£{x.estimated_cost:.2f}</td><td>{x.created_at}</td></tr>" for x in t) or "<tr><td colspan='6'>No tickets</td></tr>"
+    customer_rows = ''.join(f"<tr><td>{x.id}</td><td>{x.name}</td><td>{x.email}</td><td>{x.phone}</td><td>{x.created_at}</td></tr>" for x in c) or "<tr><td colspan='5'>No customers</td></tr>"
+    return HTMLResponse(f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -78,144 +171,26 @@ async def admin():
             </table>
             <button style="margin-top:20px;padding:10px 20px;background:#00C4B4;color:white;border:none;border-radius:8px;cursor:pointer">View All</button>
           </div>
+          <h2>All Bookings</h2>
+          <table>
+            <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date</th><th>Time</th><th>Description</th><th>Booked</th></tr>
+            {booking_rows}
+          </table>
+          <h2>All Tickets</h2>
+          <table>
+            <tr><th>ID</th><th>Customer</th><th>Device</th><th>Est. Cost</th><th>Created</th></tr>
+            {ticket_rows}
+          </table>
+          <h2>All Customers</h2>
+          <table>
+            <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Created</th></tr>
+            {customer_rows}
+          </table>
+          <p style="text-align:center;margin-top:50px"><a href="/calendar" style="color:#00C4B4">Calendar</a> | <a href="/login" style="color:#00C4B4">Logout</a></p>
         </div>
       </div>
     </body>
     </html>
     """)
 
-# REAL FORMS FOR ALL BUTTONS
-@app.get("/new-customer")
-async def new_customer():
-    return HTMLResponse("""
-    <div style="max-width:600px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
-      <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Customer</h1>
-      <form action="/create-customer" method="post">
-        <input name="name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="address" placeholder="Address" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <textarea name="notes" rows="4" placeholder="Notes (optional)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white"></textarea>
-        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">SAVE CUSTOMER</button>
-      </form>
-      <p style="text-align:center;margin-top:30px"><a href="/admin" style="color:#00C4B4">← Back to Dashboard</a></p>
-    </div>
-    """)
-
-@app.post("/create-customer")
-async def create_customer(name: str = Form(...), email: str = Form(...), phone: str = Form(...), address: str = Form(""), notes: str = Form("")):
-    return HTMLResponse(f"""
-    <div style="max-width:600px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
-      <h1 style="color:green;text-align:center">Customer Created!</h1>
-      <h2 style="text-align:center">{name}</h2>
-      <p style="text-align:center;font-size:24px">
-        Email: {email}<br>
-        Phone: {phone}<br>
-        Address: {address or 'Not provided'}<br>
-        Notes: {notes or 'None'}
-      </p>
-      <p style="text-align:center;margin-top:50px">
-        <a href="/admin" style="color:#00C4B4">← Back to Dashboard</a>
-      </p>
-    </div>
-    """)
-
-@app.get("/new-ticket")
-async def new_ticket():
-    return HTMLResponse("""
-    <div style="max-width:900px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
-      <h1 style="text-align:center;color:#00C4B4;margin-bottom:30px">+ New Ticket</h1>
-      <form action="/create-ticket" method="post">
-        <h2 style="color:#00C4B4">Customer</h2>
-        <input name="customer_name" placeholder="Full Name" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="customer_email" type="email" placeholder="Email" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="customer_phone" placeholder="Phone Number" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <h2 style="color:#00C4B4">Device</h2>
-        <select name="device_type" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-          <option value="">Select Type</option>
-          <option>Laptop</option>
-          <option>Phone</option>
-          <option>Tablet</option>
-          <option>Desktop</option>
-          <option>Other</option>
-        </select>
-        <input name="brand" placeholder="Brand" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="model" placeholder="Model" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="serial" placeholder="Serial/IMEI" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <h2 style="color:#00C4B4">Faults</h2>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
-          <label><input type="checkbox" name="faults" value="No Power"> No Power</label>
-          <label><input type="checkbox" name="faults" value="Won't Charge"> Won't Charge</label>
-          <label><input type="checkbox" name="faults" value="Cracked Screen"> Cracked Screen</label>
-          <label><input type="checkbox" name="faults" value="Liquid Damage"> Liquid Damage</label>
-          <label><input type="checkbox" name="faults" value="Slow Performance"> Slow Performance</label>
-          <label><input type="checkbox" name="faults" value="Other"> Other</label>
-        </div>
-        <input name="other_fault" placeholder="Other fault details" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <h2 style="color:#00C4B4">Accessories</h2>
-        <input name="accessories" placeholder="Charger, case, etc" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <h2 style="color:#00C4B4">Estimated Repair Cost</h2>
-        <input name="estimated_cost" type="number" step="0.01" placeholder="£" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer">CREATE TICKET</button>
-      </form>
-      <p style="text-align:center;margin-top:30px"><a href="/admin" style="color:#00C4B4">← Back</a></p>
-    </div>
-    """)
-
-@app.post("/create-ticket")
-async def create_ticket(customer_name: str = Form(...), customer_email: str = Form(...), customer_phone: str = Form(...), device_type: str = Form(...), brand: str = Form(...), model: str = Form(...), serial: str = Form(""), accessories: str = Form(""), estimated_cost: float = Form(0.0)):
-    return HTMLResponse(f"""
-    <div style="max-width:800px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0">
-      <h1 style="color:green;text-align:center">TICKET CREATED!</h1>
-      <h2 style="text-align:center">Customer: {customer_name}</h2>
-      <p style="text-align:center;font-size:24px">
-        Device: {brand} {model} ({device_type})<br>
-        Serial: {serial or 'N/A'}<br>
-        Accessories: {accessories or 'None'}<br>
-        <strong>Estimated Cost: £{estimated_cost:.2f}</strong>
-      </p>
-      <p style="text-align:center;margin-top:50px"><a href="/admin" style="color:#00C4B4">← Back</a></p>
-    </div>
-    """)
-
-# Placeholder for remaining buttons (no Not Found)
-@app.get("/new-checkin")
-async def new_checkin():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Check In</h1><p style='text-align:center'>Form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/new-invoice")
-async def new_invoice():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Invoice</h1><p style='text-align:center'>Form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/new-estimate")
-async def new_estimate():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Estimate</h1><p style='text-align:center'>Form ready soon</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-# Sidebar links (real pages)
-@app.get("/organizations")
-async def organizations():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Organizations</h1><p style='text-align:center'>Manage organizations</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/invoices")
-async def invoices():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Invoices</h1><p style='text-align:center'>View invoices</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/customer-purchases")
-async def customer_purchases():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Customer Purchases</h1><p style='text-align:center'>Purchase history</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/refurbs")
-async def refurbs():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Refurbs</h1><p style='text-align:center'>Refurbished items</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/tickets")
-async def tickets():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Tickets</h1><p style='text-align:center'>Repair tickets</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/parts")
-async def parts():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Parts</h1><p style='text-align:center'>Parts inventory</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/more")
-async def more():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>More</h1><p style='text-align:center'>Additional tools</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+# ... (add the other routes from previous messages for new-customer, new-ticket, etc.)
