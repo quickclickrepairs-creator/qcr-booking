@@ -202,3 +202,32 @@ async def book(
       <a href="/">← Book Another</a>
     </p>
     """)
+    @app.post("/book")
+async def book(
+    customer_name: str = Form(...),
+    customer_email: str = Form(...),
+    customer_phone: str = Form(...),
+    service_type: str = Form(...),
+    appointment_date: str = Form(...),
+    appointment_time: str = Form(...),
+    description: str = Form("")
+):
+    # Confirmation page - success message
+    return HTMLResponse(f"""
+    <html>
+    <head><title>Booked!</title></head>
+    <body style="font-family:Arial;background:#f0f8ff;text-align:center;padding:50px">
+      <h1 style="color:green">Appointment Booked!</h1>
+      <h2>Thank you {customer_name}!</h2>
+      <p style="font-size:24px">
+        Service: <strong>{service_type}</strong><br>
+        Date: <strong>{appointment_date}</strong><br>
+        Time: <strong>{appointment_time}</strong><br>
+        We will contact you on <strong>{customer_phone}</strong>
+      </p>
+      <p style="margin-top:50px">
+        <a href="/" style="color:#00C4B4;font-size:20px">← Book Another Appointment</a>
+      </p>
+    </body>
+    </html>
+    """)
