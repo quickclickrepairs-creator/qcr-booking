@@ -67,9 +67,9 @@ ADMIN_PASS = "qcr123"
 GMAIL_USER = "your.email@gmail.com"
 GMAIL_PASS = "your-app-password"  # https://myaccount.google.com/apppasswords
 
-TWILIO_SID = "your_twilio_sid"
-TWILIO_TOKEN = "your_twilio_auth_token"
-YOUR_WHATSAPP = "whatsapp:+44YOURNUMBER"  # Your own number
+TWILIO_SID = "SK4126c6f61809c4bbbe9b8320450e3fd9"
+TWILIO_TOKEN = "OVp0maf2JAh9vqqsRjVDC7FNNYc3xwse"
+YOUR_WHATSAPP = "whatsapp:+447863743275"  # Your own number
 
 @app.get("/login")
 async def login_page():
