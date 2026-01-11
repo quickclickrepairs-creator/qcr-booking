@@ -1,3 +1,4 @@
+from twilio.rest import Client
 from fastapi import FastAPI, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -180,11 +181,17 @@ async def book(
 
     # WhatsApp
     try:
-        client = Client(TWILIO_SID, TWILIO_TOKEN)
-        client.messages.create(
-            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you!",
-            from_=YOUR_WHATSAPP,
-            to=f"whatsapp:+44{customer_phone.lstrip('0')}"
+           # Auto WhatsApp confirmation from your own number
+    try:
+        client = Client("YOUR_TWILIO_ACCOUNT_SID", "YOUR_TWILIO_AUTH_TOKEN")
+        message = client.messages.create(
+            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!\nReply here if you need to change anything.",
+            from_="whatsapp:+447863743275",  # Your approved number
+            to=f"whatsapp:+44{customer_phone.lstrip('0')}"  # Customer's UK number
+        )
+        print("WhatsApp sent:", message.sid)  # For debug in Render logs
+    except Exception as e:
+        print("WhatsApp error:", str(e))  # For debug
         )
     except:
         pass
