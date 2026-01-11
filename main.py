@@ -1,99 +1,193 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, Request, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime, text
+from datetime import datetime
+import os
+import smtplib
+from email.mime.text import MIMEText
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from twilio.rest import Client
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/admin")
-async def admin():
+# Database (Render sets DATABASE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
+engine = create_engine(DATABASE_URL)
+metadata = MetaData()
+
+bookings = Table("bookings", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("customer_name", String),
+    Column("customer_email", String),
+    Column("customer_phone", String),
+    Column("service_type", String),
+    Column("appointment_date", String),
+    Column("appointment_time", String),
+    Column("description", String),
+    Column("created_at", DateTime, default=datetime.utcnow)
+)
+
+tickets = Table("tickets", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("customer_name", String),
+    Column("customer_email", String),
+    Column("customer_phone", String),
+    Column("device_type", String),
+    Column("brand", String),
+    Column("model", String),
+    Column("serial", String),
+    Column("faults", String),
+    Column("other_fault", String),
+    Column("accessories", String),
+    Column("estimated_cost", Float),
+    Column("created_at", DateTime, default=datetime.utcnow)
+)
+
+metadata.create_all(engine)
+
+# Login credentials (change these!)
+ADMIN_USER = "alan"
+ADMIN_PASS = "qcr123"
+
+# Email (Gmail - use App Password, not regular password)
+GMAIL_USER = "your.email@gmail.com"
+GMAIL_PASS = "your-app-password"  # Create at https://myaccount.google.com/apppasswords
+
+# Twilio for WhatsApp (your own number)
+TWILIO_SID = "your_twilio_sid"
+TWILIO_TOKEN = "your_twilio_auth_token"
+YOUR_WHATSAPP = "whatsapp:+44YOURNUMBER"  # e.g., whatsapp:+447123456789
+
+@app.get("/login")
+async def login_page():
     return HTMLResponse("""
-    <div style="background:#1e1e1e;color:#e0e0e0;padding:20px;min-height:100vh">
-      <header style="background:#000;padding:15px 30px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 10px rgba(0,0,0,0.5)">
-        <h1 style="color:#fff;font-size:24px">Quick Click Repairs</h1>
-        <input type="text" placeholder="Search all the things" style="background:#333;border-radius:20px;padding:8px 15px;color:white;border:none;width:300px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span>Alan ▼</span>
-          <img src="https://i.imgur.com/placeholder-user.jpg" alt="User" style="width:40px;height:40px;border-radius:50%">
-        </div>
-      </header>
-      <div style="display:flex">
-        <nav style="background:#2a2a2a;padding:20px;min-width:200px">
-          <ul style="list-style:none">
-            <li style="margin:10px 0"><a href="/organizations" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Organizations</a></li>
-            <li style="margin:10px 0"><a href="/invoices" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Invoices</a></li>
-            <li style="margin:10px 0"><a href="/customer-purchases" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Customer Purchases</a></li>
-            <li style="margin:10px 0"><a href="/refurbs" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Refurbs</a></li>
-            <li style="margin:10px 0"><a href="/tickets" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Tickets</a></li>
-            <li style="margin:10px 0"><a href="/parts" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">Parts</a></li>
-            <li style="margin:10px 0"><a href="/more" style="color:#aaa;text-decoration:none;font-size:16px;display:block;padding:10px;border-radius:8px">More</a></li>
-          </ul>
-        </nav>
-        <div style="flex:1;padding:30px">
-          <div style="font-size:36px;margin-bottom:40px">Welcome!</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:40px">
-            <a href="/new-customer" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;font-weight:bold;text-align:center;display:flex;align-items:center;justify-content:center;gap:15px">👤 + New Customer</a>
-            <a href="/new-ticket" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;font-weight:bold;text-align:center;display:flex;align-items:center;justify-content:center;gap:15px">✔ + New Ticket</a>
-            <a href="/new-checkin" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;font-weight:bold;text-align:center;display:flex;align-items:center;justify-content:center;gap:15px">📱 + New Check In</a>
-            <a href="/new-invoice" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;font-weight:bold;text-align:center;display:flex;align-items:center;justify-content:center;gap:15px">🛒 + New Invoice</a>
-            <a href="/new-estimate" style="background:#00C4B4;color:white;padding:30px;border-radius:12px;text-decoration:none;font-size:20px;font-weight:bold;text-align:center;display:flex;align-items:center;justify-content:center;gap:15px">📄 + New Estimate</a>
-          </div>
-          <div style="background:#2a2a2a;padding:25px;border-radius:12px">
-            <h2>REMINDERS</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><th style="background:#00C4B4;color:white;padding:12px;text-align:left">MESSAGE</th><th style="background:#00C4B4;color:white;padding:12px;text-align:left">TIME</th><th style="background:#00C4B4;color:white;padding:12px;text-align:left">TECH</th><th style="background:#00C4B4;color:white;padding:12px;text-align:left">CUSTOMER</th></tr>
-              <tr><td>No reminders yet</td><td>-</td><td>-</td><td>-</td></tr>
-            </table>
-            <button style="margin-top:20px;padding:10px 20px;background:#00C4B4;color:white;border:none;border-radius:8px;cursor:pointer">View All</button>
-          </div>
-        </div>
-      </div>
+    <div style="max-width:400px;margin:100px auto;text-align:center">
+      <h1 style="color:#00C4B4">Admin Login</h1>
+      <form action="/login" method="post">
+        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
+        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px" required>
+        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
+      </form>
     </div>
     """)
 
-# ALL routes for buttons and sidebar (no 404 ever)
-@app.get("/new-customer")
-async def new_customer():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Customer</h1><p style='text-align:center;font-size:24px'>Customer form ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+@app.post("/login")
+async def do_login(username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        return RedirectResponse("/admin", status_code=303)
+    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/login'>← Try again</a></p>")
 
-@app.get("/new-ticket")
-async def new_ticket():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Ticket</h1><p style='text-align:center;font-size:24px'>Repair form ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+@app.get("/admin")
+async def admin(request: Request):
+    with engine.connect() as conn:
+        bookings = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC")).fetchall()
+        tickets = conn.execute(text("SELECT * FROM tickets ORDER BY created_at DESC")).fetchall()
+    booking_rows = ""
+    for b in bookings:
+        booking_rows += f"<tr><td>{b.id}</td><td>{b.customer_name}</td><td>{b.customer_email}</td><td>{b.customer_phone}</td><td>{b.service_type}</td><td>{b.appointment_date}</td><td>{b.appointment_time}</td><td>{b.description or ''}</td><td>{b.created_at}</td></tr>"
+    ticket_rows = ""
+    for t in tickets:
+        ticket_rows += f"<tr><td>{t.id}</td><td>{t.customer_name}</td><td>{t.device_type}</td><td>{t.brand} {t.model}</td><td>{t.estimated_cost}</td><td>{t.created_at}</td></tr>"
+    return HTMLResponse(f"""
+    <style>
+      body {{font-family:'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:20px}}
+      .header {{background:#000;color:white;padding:20px;text-align:center;border-radius:12px}}
+      .content {{max-width:1200px;margin:auto}}
+      table {{width:100%;border-collapse:collapse;margin-top:30px;background:white;box-shadow:0 4px 10px rgba(0,0,0,0.1)}}
+      th {{background:#00C4B4;color:white;padding:15px}}
+      td {{padding:15px;border-bottom:1px solid #eee}}
+      tr:hover {{background:#f0f8ff}}
+    </style>
+    <div class="header">
+      <h1>QCR Admin Dashboard</h1>
+    </div>
+    <div class="content">
+      <h2>All Bookings ({len(bookings)})</h2>
+      <table>
+        <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date</th><th>Time</th><th>Description</th><th>Booked At</th></tr>
+        {booking_rows or "<tr><td colspan='9' style='text-align:center'>No bookings yet</td></tr>"}
+      </table>
+      <h2>All Tickets ({len(tickets)})</h2>
+      <table>
+        <tr><th>ID</th><th>Customer</th><th>Device</th><th>Brand/Model</th><th>Est. Cost</th><th>Created</th></tr>
+        {ticket_rows or "<tr><td colspan='6' style='text-align:center'>No tickets yet</td></tr>"}
+      </table>
+      <p style="text-align:center;margin-top:50px"><a href="/calendar" style="color:#00C4B4">View Calendar</a> | <a href="/login" style="color:#00C4B4">Logout</a></p>
+    </div>
+    """)
 
-@app.get("/new-checkin")
-async def new_checkin():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Check In</h1><p style='text-align:center;font-size:24px'>Check-in form ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+@app.get("/calendar")
+async def calendar():
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT appointment_date, COUNT(*) FROM bookings GROUP BY appointment_date"))
+        dates = result.fetchall()
+    calendar_html = "<h2 style='text-align:center;color:#00C4B4'>Appointment Calendar</h2><table style='margin:auto;width:80%;border-collapse:collapse'>"
+    calendar_html += "<tr><th>Date</th><th>Bookings</th></tr>"
+    for date, count in dates:
+        calendar_html += f"<tr><td>{date}</td><td>{count}</td></tr>"
+    calendar_html += "</table><p style='text-align:center'><a href='/admin'>← Back to Dashboard</a></p>"
+    return HTMLResponse(calendar_html)
 
-@app.get("/new-invoice")
-async def new_invoice():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Invoice</h1><p style='text-align:center;font-size:24px'>Invoice form ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+@app.post("/book")
+async def book(
+    customer_name: str = Form(...),
+    customer_email: str = Form(...),
+    customer_phone: str = Form(...),
+    service_type: str = Form(...),
+    appointment_date: str = Form(...),
+    appointment_time: str = Form(...),
+    description: str = Form("")
+):
+    with engine.connect() as conn:
+        conn.execute(bookings.insert().values(
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            service_type=service_type,
+            appointment_date=appointment_date,
+            appointment_time=appointment_time,
+            description=description
+        ))
+        conn.commit()
 
-@app.get("/new-estimate")
-async def new_estimate():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>+ New Estimate</h1><p style='text-align:center;font-size:24px'>Estimate form ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+    # Email confirmation
+    try:
+        msg = MIMEText(f"Hi {customer_name}!\nYour appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you!")
+        msg['Subject'] = "Appointment Confirmation - Quick Click Repairs"
+        msg['From'] = GMAIL_USER
+        msg['To'] = customer_email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_PASS)
+            server.send_message(msg)
+    except Exception as e:
+        print("Email error:", str(e))
 
-@app.get("/organizations")
-async def organizations():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Organizations</h1><p style='text-align:center;font-size:24px'>Organizations page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+    # WhatsApp confirmation from your number
+    try:
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        message = client.messages.create(
+            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!",
+            from_=YOUR_WHATSAPP,
+            to=f"whatsapp:+44{customer_phone.lstrip('0')}"
+        )
+        print("WhatsApp sent:", message.sid)
+    except Exception as e:
+        print("WhatsApp error:", str(e))
 
-@app.get("/invoices")
-async def invoices():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Invoices</h1><p style='text-align:center;font-size:24px'>Invoices page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/customer-purchases")
-async def customer_purchases():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Customer Purchases</h1><p style='text-align:center;font-size:24px'>Purchases page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/refurbs")
-async def refurbs():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Refurbs</h1><p style='text-align:center;font-size:24px'>Refurbs page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/tickets")
-async def tickets():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Tickets</h1><p style='text-align:center;font-size:24px'>Tickets page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/parts")
-async def parts():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>Parts</h1><p style='text-align:center;font-size:24px'>Parts page ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
-
-@app.get("/more")
-async def more():
-    return HTMLResponse("<h1 style='color:#00C4B4;text-align:center;margin-top:100px'>More</h1><p style='text-align:center;font-size:24px'>More tools ready (placeholder)</p><p style='text-align:center'><a href='/admin'>← Back</a></p>")
+    return HTMLResponse(f"""
+    <h1 style="color:green;text-align:center;margin-top:100px">Appointment Booked!</h1>
+    <h2 style="text-align:center">Thank you {customer_name}</h2>
+    <p style="text-align:center;font-size:24px">
+      Service: {service_type}<br>
+      Date: {appointment_date}<br>
+      Time: {appointment_time}<br>
+      We will contact you on {customer_phone}
+    </p>
+    <p style="text-align:center;margin-top:50px">
+      <a href="/">← Book Another</a> | <a href="/admin">Admin Dashboard</a>
+    </p>
+    """)
