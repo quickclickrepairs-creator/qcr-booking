@@ -217,5 +217,3 @@ async def book(
     </body>
     </html>
     """)
-</parameter>
-</xai:function_call>
