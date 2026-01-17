@@ -1,17 +1,22 @@
-from fastapi import FastAPI, Form, Request, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from twilio.rest import Client
 
 app = FastAPI()
 
-# Database (use Render DATABASE_URL in production)
+# Database
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
 engine = create_engine(DATABASE_URL)
 
-# Create table if missing
 with engine.connect() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS bookings (
@@ -23,30 +28,30 @@ with engine.connect() as conn:
             appointment_date VARCHAR(50) NOT NULL,
             appointment_time VARCHAR(50) NOT NULL,
             description TEXT,
-            created_by VARCHAR(100),  -- who created it (staff name)
+            created_by VARCHAR(100),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
     conn.commit()
 
-# Simple basic auth for staff (change username/password in production!)
+# Staff login (basic auth - change in production!)
 security = HTTPBasic()
 
-def verify_staff(credentials: HTTPBasicCredentials = Depends(security)):
+def get_current_staff(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = "staff"
     correct_password = "qcrstaff123"  # CHANGE THIS!
     if credentials.username == correct_username and credentials.password == correct_password:
         return credentials.username
     raise HTTPException(status_code=401, detail="Invalid staff credentials")
 
-# Public page — no booking form, only message
+# Public page - no booking form
 @app.get("/")
 async def public_page():
     return HTMLResponse("""
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Quick Click Repairs - Booking</title>
+      <title>Quick Click Repairs</title>
       <style>
         body { font-family: Arial, sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center; }
         .box { max-width: 600px; padding: 40px; background: #2a2a2a; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -58,9 +63,9 @@ async def public_page():
     </head>
     <body>
       <div class="box">
-        <h1>Online Booking Disabled</h1>
-        <p>We are now accepting appointments **only in-store**.</p>
-        <p>Please visit us at the shop or call us to schedule a repair slot.</p>
+        <h1>Bookings Only In-Store</h1>
+        <p>We no longer accept online bookings.</p>
+        <p>Please visit our shop or call us to schedule your repair.</p>
         <p><strong>Quick Click Repairs</strong><br>
            Unit 18, 9-19 Rose Road<br>
            Southampton, Hampshire SO14 0TE<br>
@@ -73,9 +78,93 @@ async def public_page():
     </html>
     """)
 
-# Staff-only booking form (inside admin — login required)
+# Staff login page
+@app.get("/admin")
+async def admin_login():
+    return HTMLResponse("""
+    <div style="max-width:400px;margin:100px auto;text-align:center;background:#2a2a2a;padding:40px;border-radius:15px;">
+      <h1 style="color:#00C4B4">Staff Login</h1>
+      <form action="/admin/dashboard" method="post">
+        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
+        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
+      </form>
+    </div>
+    """)
+
+@app.post("/admin/dashboard")
+async def admin_dashboard_post(username: str = Form(...), password: str = Form(...)):
+    if username == "staff" and password == "qcrstaff123":  # CHANGE THIS!
+        return RedirectResponse("/admin/dashboard", status_code=303)
+    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/admin'>← Try again</a></p>")
+
+# Protected admin dashboard
+@app.get("/admin/dashboard")
+async def admin_dashboard(staff: str = Depends(get_current_staff)):
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC"))
+        bookings = result.fetchall()
+
+    rows = ""
+    for b in bookings:
+        rows += f"""
+        <tr>
+          <td>{b.id}</td>
+          <td>{b.customer_name}</td>
+          <td>{b.customer_email}</td>
+          <td>{b.customer_phone}</td>
+          <td>{b.service_type}</td>
+          <td>{b.appointment_date} {b.appointment_time}</td>
+          <td>{b.description or '-'}</td>
+          <td>{b.created_by or 'Unknown'}</td>
+          <td>{b.created_at}</td>
+        </tr>
+        """
+
+    return HTMLResponse(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Admin - Quick Click Repairs</title>
+      <style>
+        body {{ font-family: Arial, sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; padding: 20px; }}
+        .container {{ max-width: 1400px; margin: auto; }}
+        h1 {{ color: #00C4B4; text-align: center; }}
+        .header {{ background: #000; padding: 15px; text-align: center; border-radius: 8px; margin-bottom: 30px; }}
+        table {{ width: 100%; border-collapse: collapse; background: #2a2a2a; margin-top: 20px; }}
+        th {{ background: #00C4B4; color: black; padding: 12px; text-align: left; }}
+        td {{ padding: 12px; border-bottom: 1px solid #444; }}
+        tr:hover {{ background: #333; }}
+        .new-booking {{ display: block; margin: 30px auto; background: #00C4B4; color: white; padding: 16px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; text-decoration: none; text-align: center; width: 300px; }}
+        .new-booking:hover {{ background: #00a89a; }}
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>Quick Click Repairs - Admin Dashboard</h1>
+        <p>Logged in as: {staff}</p>
+      </div>
+      <div class="container">
+        <h2>All Bookings</h2>
+        <a href="/admin/new-booking" class="new-booking">+ Create New Booking</a>
+        <table>
+          <tr>
+            <th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date & Time</th><th>Notes</th><th>Created By</th><th>Created At</th>
+          </tr>
+          {rows or '<tr><td colspan="9" style="text-align:center">No bookings yet</td></tr>'}
+        </table>
+        <p style="text-align:center;margin-top:40px">
+          <a href="/admin/new-booking" style="color:#00C4B4">Create New Booking</a> | 
+          <a href="/" style="color:#00C4B4">Back to Main Site</a>
+        </p>
+      </div>
+    </body>
+    </html>
+    """)
+
+# Staff booking form
 @app.get("/admin/new-booking")
-async def staff_booking_form(staff: str = Depends(verify_staff)):
+async def staff_booking_form(staff: str = Depends(get_current_staff)):
     return HTMLResponse(f"""
     <!DOCTYPE html>
     <html>
@@ -114,7 +203,7 @@ async def staff_booking_form(staff: str = Depends(verify_staff)):
           <button type="submit">CREATE BOOKING</button>
         </form>
         <div class="back">
-          <a href="/admin">← Back to Dashboard</a>
+          <a href="/admin/dashboard">← Back to Dashboard</a>
         </div>
       </div>
     </body>
@@ -148,88 +237,40 @@ async def create_staff_booking(
         })
         conn.commit()
 
-    return HTMLResponse(f"""
-    <div style="max-width:600px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px;color:#e0e0e0;text-align:center">
-      <h1 style="color:#00C4B4">Booking Created Successfully!</h1>
-      <p style="font-size:22px">
-        Customer: {customer_name}<br>
-        Service: {service_type}<br>
-        Date/Time: {appointment_date} {appointment_time}<br>
-        Created by: {created_by}
-      </p>
-      <p style="margin-top:40px">
-        <a href="/admin" style="color:#00C4B4;font-size:20px">← Back to Dashboard</a>
-      </p>
-    </div>
-    """)
+    # WhatsApp (using env vars)
+    try:
+        client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+        client.messages.create(
+            body=f"Hi {customer_name}! Your appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you for choosing Quick Click Repairs!\nReply here if you need to change anything.",
+            from_="whatsapp:+447863743275",
+            to=f"whatsapp:+44{customer_phone.lstrip('0')}"
+        )
+    except Exception as e:
+        print("WhatsApp error:", str(e))
 
-@app.get("/admin")
-async def admin_dashboard(credentials: str = Depends(verify_staff)):
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC"))
-        bookings = result.fetchall()
+    # Email
+    try:
+        msg = MIMEText(f"Hi {customer_name}!\nYour appointment is booked!\nService: {service_type}\nDate: {appointment_date}\nTime: {appointment_time}\nThank you!")
+        msg['Subject'] = "Appointment Confirmation - Quick Click Repairs"
+        msg['From'] = os.getenv("GMAIL_USER")
+        msg['To'] = customer_email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(os.getenv("GMAIL_USER"), os.getenv("GMAIL_PASS"))
+            server.send_message(msg)
+    except Exception as e:
+        print("Email error:", str(e))
 
-    rows = ""
-    for b in bookings:
-        rows += f"""
-        <tr>
-          <td>{b.id}</td>
-          <td>{b.customer_name}</td>
-          <td>{b.customer_email}</td>
-          <td>{b.customer_phone}</td>
-          <td>{b.service_type}</td>
-          <td>{b.appointment_date} {b.appointment_time}</td>
-          <td>{b.description or '-'}</td>
-          <td>{b.created_by or 'Unknown'}</td>
-          <td>{b.created_at}</td>
-        </tr>
-        """
+    # PDF ticket
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    c.drawString(100, 750, "Quick Click Repairs - Ticket")
+    c.drawString(100, 730, f"Customer: {customer_name}")
+    c.drawString(100, 710, f"Service: {service_type}")
+    c.drawString(100, 690, f"Date: {appointment_date}")
+    c.drawString(100, 670, f"Time: {appointment_time}")
+    c.drawString(100, 650, f"Phone: {customer_phone}")
+    c.drawString(100, 630, f"Created by: {created_by}")
+    c.save()
+    buffer.seek(0)
 
-    return HTMLResponse(f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Admin Dashboard - Quick Click Repairs</title>
-      <style>
-        body {{ font-family: Arial, sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; padding: 20px; }}
-        .container {{ max-width: 1400px; margin: auto; }}
-        h1 {{ color: #00C4B4; text-align: center; }}
-        .header {{ background: #000; padding: 15px; text-align: center; border-radius: 8px; margin-bottom: 30px; }}
-        table {{ width: 100%; border-collapse: collapse; background: #2a2a2a; margin-top: 20px; }}
-        th {{ background: #00C4B4; color: black; padding: 12px; text-align: left; }}
-        td {{ padding: 12px; border-bottom: 1px solid #444; }}
-        tr:hover {{ background: #333; }}
-        .new-booking {{ display: block; margin: 30px auto; background: #00C4B4; color: white; padding: 16px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; text-decoration: none; text-align: center; width: 300px; }}
-        .new-booking:hover {{ background: #00a89a; }}
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h1>Quick Click Repairs - Admin Dashboard</h1>
-        <p>Logged in as: {credentials}</p>
-      </div>
-      <div class="container">
-        <h2>All Bookings</h2>
-        <a href="/admin/new-booking" class="new-booking">+ Create New Booking</a>
-        <table>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Service</th>
-            <th>Date & Time</th>
-            <th>Notes</th>
-            <th>Created By</th>
-            <th>Created At</th>
-          </tr>
-          {rows or '<tr><td colspan="9" style="text-align:center">No bookings yet</td></tr>'}
-        </table>
-        <p style="text-align:center;margin-top:40px">
-          <a href="/admin/new-booking" style="color:#00C4B4">Create New Booking</a> | 
-          <a href="/" style="color:#00C4B4">Back to Main Site</a>
-        </p>
-      </div>
-    </body>
-    </html>
-    """)
+    return FileResponse(buffer, media_type="application/pdf", filename="ticket.pdf")
