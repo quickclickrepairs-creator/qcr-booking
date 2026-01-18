@@ -1,54 +1,76 @@
-from fastapi import FastAPI, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi import FastAPI, Form, Request, Depends, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
-import smtplib
-from email.mime.text import MIMEText
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from twilio.rest import Client
 
 app = FastAPI()
 
-# Database connection
+# Database (use Render env var in production)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
 engine = create_engine(DATABASE_URL)
 
-# Create customers table
+# Create bookings table
 with engine.connect() as conn:
     conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS customers (
+        CREATE TABLE IF NOT EXISTS bookings (
             id SERIAL PRIMARY KEY,
-            first_name VARCHAR(100) NOT NULL,
-            last_name VARCHAR(100) NOT NULL,
-            business_name VARCHAR(150),
-            email VARCHAR(255) NOT NULL,
-            phone VARCHAR(50) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            check_in_at TIMESTAMP
+            customer_name VARCHAR(255) NOT NULL,
+            customer_email VARCHAR(255),
+            customer_phone VARCHAR(50) NOT NULL,
+            service_type VARCHAR(255) NOT NULL,
+            appointment_date VARCHAR(50) NOT NULL,
+            appointment_time VARCHAR(50) NOT NULL,
+            description TEXT,
+            created_by VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
     conn.commit()
 
-# Credentials (use Render env vars for security)
-ADMIN_USER = "alan"
-ADMIN_PASS = "qcr123"
+# Simple staff login (change later!)
+def verify_staff(username: str, password: str):
+    return username == "staff" and password == "qcrstaff123"
 
-GMAIL_USER = os.getenv("GMAIL_USER", "your.email@gmail.com")
-GMAIL_PASS = os.getenv("GMAIL_PASS", "your-app-password")
+@app.get("/")
+async def public_page():
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Quick Click Repairs</title>
+      <style>
+        body {font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center}
+        .box {max-width:600px;padding:40px;background:#2a2a2a;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
+        h1 {color:#00C4B4;margin-bottom:20px}
+        p {font-size:20px;line-height:1.5;margin:20px 0}
+        a {color:#00C4B4;text-decoration:none;font-weight:bold}
+        a:hover {text-decoration:underline}
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <h1>Bookings Only In-Store</h1>
+        <p>We no longer accept online bookings.</p>
+        <p>Please visit our shop or call us to schedule a repair slot.</p>
+        <p><strong>Quick Click Repairs</strong><br>
+           Unit 18, 9-19 Rose Road<br>
+           Southampton, Hampshire SO14 0TE<br>
+           Phone: 023 8036 1277</p>
+        <p style="margin-top:40px">
+          <a href="/admin">Staff / Admin Login →</a>
+        </p>
+      </div>
+    </body>
+    </html>
+    """)
 
-TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID", "your-twilio-sid")
-TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "your-twilio-token")
-YOUR_WHATSAPP = "whatsapp:+447863743275"
-
-@app.get("/login")
-async def login_page():
+@app.get("/admin")
+async def admin_login():
     return HTMLResponse("""
     <div style="max-width:400px;margin:100px auto;background:#2a2a2a;padding:40px;border-radius:15px;text-align:center">
-      <h1 style="color:#00C4B4">Admin Login</h1>
-      <form action="/login" method="post">
+      <h1 style="color:#00C4B4">Staff Login</h1>
+      <form action="/admin/dashboard" method="post">
         <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
@@ -56,160 +78,147 @@ async def login_page():
     </div>
     """)
 
-@app.post("/login")
-async def do_login(username: str = Form(...), password: str = Form(...)):
-    if username == ADMIN_USER and password == ADMIN_PASS:
-        return RedirectResponse("/admin", status_code=303)
-    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/login'>← Try again</a></p>")
+@app.post("/admin/dashboard")
+async def login_post(username: str = Form(...), password: str = Form(...)):
+    if username == "staff" and password == "qcrstaff123":
+        return RedirectResponse("/admin/dashboard", status_code=303)
+    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/admin'>← Try again</a></p>")
 
-@app.get("/admin")
-async def admin():
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT * FROM customers ORDER BY created_at DESC"))
-        customers = result.fetchall()
+@app.get("/admin/dashboard")
+async def admin_dashboard():
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT * FROM bookings ORDER BY created_at DESC"))
+            bookings = result.fetchall()
+    except Exception as e:
+        print(f"Database error: {str(e)}")
+        bookings = []
 
     rows = ""
-    for c in customers:
-        check_in = c.check_in_at.strftime("%Y-%m-%d %H:%M") if c.check_in_at else "Not checked in"
-        button = f'<a href="/admin/checkin/{c.id}" style="background:#00C4B4;color:white;padding:8px 16px;border-radius:6px;text-decoration:none">Check-in</a>' if not c.check_in_at else "Checked In"
+    for b in bookings:
         rows += f"""
         <tr>
-          <td>{c.id}</td>
-          <td>{c.first_name} {c.last_name}</td>
-          <td>{c.business_name or '-'}</td>
-          <td>{c.email}</td>
-          <td>{c.phone}</td>
-          <td>{c.created_at.strftime("%Y-%m-%d %H:%M")}</td>
-          <td>{check_in}</td>
-          <td>{button}</td>
+          <td>{b.id}</td>
+          <td>{b.customer_name}</td>
+          <td>{b.customer_email or '-'}</td>
+          <td>{b.customer_phone}</td>
+          <td>{b.service_type}</td>
+          <td>{b.appointment_date} {b.appointment_time}</td>
+          <td>{b.description or '-'}</td>
+          <td>{b.created_by or 'Unknown'}</td>
+          <td>{b.created_at.strftime("%Y-%m-%d %H:%M")}</td>
         </tr>
         """
 
     return HTMLResponse(f"""
-    <style>
-      body {{font-family:'Segoe UI',sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:20px}}
-      .header {{background:#000;color:white;padding:20px;text-align:center;border-radius:12px}}
-      .content {{max-width:1200px;margin:auto}}
-      table {{width:100%;border-collapse:collapse;margin-top:30px;background:#2a2a2a;box-shadow:0 4px 10px rgba(0,0,0,0.5)}}
-      th {{background:#00C4B4;color:white;padding:15px}}
-      td {{padding:15px;border-bottom:1px solid #444}}
-      tr:hover {{background:#3a3a3a}}
-      .add-customer {{background:#00C4B4;color:white;padding:18px;font-size:22px;border:none;border-radius:10px;width:100%;margin-top:20px;cursor:pointer}}
-    </style>
-    <div class="header">
-      <h1>QCR Admin Dashboard</h1>
-    </div>
-    <div class="content">
-      <h2>All Customers</h2>
-      <form action="/create-customer" method="post">
-        <input name="first_name" placeholder="First Name" required>
-        <input name="last_name" placeholder="Last Name" required>
-        <input name="business_name" placeholder="Business Name (optional)">
-        <input name="email" type="email" placeholder="Email" required>
-        <input name="phone" placeholder="Phone Number" required>
-        <button type="submit" class="add-customer">Add Customer</button>
-      </form>
-      <table>
-        <tr><th>ID</th><th>Name</th><th>Business</th><th>Email</th><th>Phone</th><th>Created</th><th>Check-in</th><th>Action</th></tr>
-        {rows or "<tr><td colspan='8'>No customers yet</td></tr>"}
-      </table>
-      <p style="text-align:center;margin-top:50px">
-        <a href="/login" style="color:#00C4B4">Logout</a>
-      </p>
-    </div>
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Admin Dashboard - Quick Click Repairs</title>
+      <style>
+        body {{font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:20px}}
+        .container {{max-width:1400px;margin:auto}}
+        h1 {{color:#00C4B4;text-align:center}}
+        table {{width:100%;border-collapse:collapse;background:#2a2a2a;margin-top:20px}}
+        th {{background:#00C4B4;color:black;padding:12px;text-align:left}}
+        td {{padding:12px;border-bottom:1px solid #444}}
+        tr:hover {{background:#333}}
+        .new-booking {{display:block;margin:30px auto;background:#00C4B4;color:white;padding:16px 30px;border:none;border-radius:8px;font-size:18px;cursor:pointer;text-decoration:none;text-align:center;width:300px}}
+        .new-booking:hover {{background:#00a89a}}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Admin Dashboard</h1>
+        <a href="/admin/new-booking" class="new-booking">+ Create New Booking</a>
+        <h2>All Bookings</h2>
+        <table>
+          <tr>
+            <th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date & Time</th><th>Notes</th><th>Created By</th><th>Created At</th>
+          </tr>
+          {rows or '<tr><td colspan="9" style="text-align:center">No bookings yet</td></tr>'}
+        </table>
+        <p style="text-align:center;margin-top:40px">
+          <a href="/admin/new-booking" style="color:#00C4B4">Create New Booking</a> | 
+          <a href="/" style="color:#00C4B4">Back to Site</a>
+        </p>
+      </div>
+    </body>
+    </html>
     """)
 
-@app.post("/create-customer")
-async def create_customer(
-    first_name: str = Form(...),
-    last_name: str = Form(...),
-    business_name: str = Form(""),
-    email: str = Form(...),
-    phone: str = Form(...)
-):
-    with engine.connect() as conn:
-        conn.execute(text("""
-            INSERT INTO customers (first_name, last_name, business_name, email, phone)
-            VALUES (:first, :last, :business, :email, :phone)
-        """), {
-            "first": first_name,
-            "last": last_name,
-            "business": business_name,
-            "email": email,
-            "phone": phone
-        })
-        conn.commit()
-
-    return RedirectResponse("/admin", status_code=303)
-
-@app.get("/admin/checkin/{id}")
-async def checkin(id: int):
-    with engine.connect() as conn:
-        conn.execute(text("""
-            UPDATE customers SET check_in_at = CURRENT_TIMESTAMP WHERE id = :id
-        """), {"id": id})
-        conn.commit()
-
-    # ==================
-#  NEW CUSTOMER FORM & LIST
-# ==================
-
-@app.get("/admin/new-customer")
-async def new_customer_form():
+@app.get("/admin/new-booking")
+async def new_booking():
     return HTMLResponse("""
-    <div style="max-width:600px;margin:40px auto;background:#2a2a2a;padding:40px;border-radius:15px">
-      <h1 style="color:#00C4B4;text-align:center">New Customer</h1>
-      <form action="/admin/create-customer" method="post">
-        <input name="first_name" placeholder="First Name" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="last_name" placeholder="Last Name" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="business_name" placeholder="Business Name (optional)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="email" type="email" placeholder="Email" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <input name="phone" placeholder="Phone Number" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
-        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:20px;border:none;border-radius:10px;width:100%;cursor:pointer;margin-top:20px">Save Customer</button>
-      </form>
-      <p style="text-align:center;margin-top:30px"><a href="/admin/dashboard" style="color:#00C4B4">← Back to Dashboard</a></p>
-    </div>
+    <html>
+    <head>
+      <title>New Booking - Staff</title>
+      <style>
+        body {font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:40px}
+        .container {max-width:700px;margin:auto;background:#2a2a2a;padding:40px;border-radius:15px}
+        h1 {color:#00C4B4;text-align:center}
+        input, select, textarea {width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white;border:1px solid #444}
+        button {background:#00C4B4;color:white;padding:18px;font-size:20px;border:none;border-radius:10px;width:100%;cursor:pointer}
+        button:hover {background:#00a89a}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>New Booking (Staff Only)</h1>
+        <form action="/admin/create-booking" method="post">
+          <input name="customer_name" placeholder="Customer Name" required>
+          <input name="customer_email" type="email" placeholder="Email" required>
+          <input name="customer_phone" placeholder="Phone" required>
+          <select name="service_type" required>
+            <option value="">Service Type</option>
+            <option>Laptop Repair</option>
+            <option>Phone Repair</option>
+            <option>Other</option>
+          </select>
+          <input name="appointment_date" type="date" required>
+          <input name="appointment_time" type="time" required>
+          <textarea name="description" rows="4" placeholder="Notes"></textarea>
+          <button type="submit">Create Booking</button>
+        </form>
+        <p style="text-align:center;margin-top:30px"><a href="/admin/dashboard" style="color:#00C4B4">← Back to Dashboard</a></p>
+      </div>
+    </body>
+    </html>
     """)
 
-@app.post("/admin/create-customer")
-async def create_customer(
-    first_name: str = Form(...),
-    last_name: str = Form(...),
-    business_name: str = Form(None),
-    email: str = Form(...),
-    phone: str = Form(...)
+@app.post("/admin/create-booking")
+async def create_booking(
+    customer_name: str = Form(...),
+    customer_email: str = Form(...),
+    customer_phone: str = Form(...),
+    service_type: str = Form(...),
+    appointment_date: str = Form(...),
+    appointment_time: str = Form(...),
+    description: str = Form("")
 ):
     try:
         with engine.connect() as conn:
             conn.execute(text("""
-                INSERT INTO customers (first_name, last_name, business_name, email, phone)
-                VALUES (:first, :last, :business, :email, :phone)
+                INSERT INTO bookings (customer_name, customer_email, customer_phone, service_type, appointment_date, appointment_time, description)
+                VALUES (:name, :email, :phone, :service, :date, :time, :desc)
             """), {
-                "first": first_name,
-                "last": last_name,
-                "business": business_name,
-                "email": email,
-                "phone": phone
+                "name": customer_name,
+                "email": customer_email,
+                "phone": customer_phone,
+                "service": service_type,
+                "date": appointment_date,
+                "time": appointment_time,
+                "desc": description
             })
             conn.commit()
-        return RedirectResponse("/admin/dashboard", status_code=303)
+        return HTMLResponse("""
+        <div style="text-align:center;padding:100px;background:#1e1e1e;color:#e0e0e0">
+          <h1 style="color:#00C4B4">Booking Created!</h1>
+          <p style="font-size:22px">Booking for {customer_name} saved successfully.</p>
+          <p style="margin-top:40px">
+            <a href="/admin/dashboard" style="color:#00C4B4">Back to Dashboard</a>
+          </p>
+        </div>
+        """)
     except Exception as e:
-        return HTMLResponse(f"<h2 style='color:red'>Error: {str(e)}</h2><p><a href='/admin/new-customer'>← Try again</a></p>")
-
-@app.get("/admin/checkin/{customer_id}")
-async def checkin_customer(customer_id: int):
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("""
-                UPDATE customers 
-                SET check_in_at = CURRENT_TIMESTAMP 
-                WHERE id = :id AND check_in_at IS NULL
-            """), {"id": customer_id})
-            conn.commit()
-        return RedirectResponse("/admin/dashboard", status_code=303)
-    except Exception as e:
-        return HTMLResponse(f"<h2 style='color:red'>Check-in failed: {str(e)}</h2><p><a href='/admin/dashboard'>← Back</a></p>")
-
-    # Optional: Send WhatsApp or email to customer here
-
-    return RedirectResponse("/admin", status_code=303)
+        return HTMLResponse(f"<h2 style='color:red'>Error: {str(e)}</h2><p><a href='/admin/new-booking'>← Try again</a></p>")
