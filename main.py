@@ -38,24 +38,34 @@ async def public_page():
     """)
 
 # Staff login page
+# Staff login page (GET)
 @app.get("/admin")
 async def admin_login():
     return HTMLResponse("""
-    <div style="max-width:400px;margin:100px auto;background:#2a2a2a;padding:40px;border-radius:15px;text-align:center">
+    <div style="max-width:400px;margin:100px auto;background:#2a2a2a;padding:40px;border-radius:15px;text-align:center;color:#e0e0e0">
       <h1 style="color:#00C4B4">Staff Login</h1>
-      <form action="/admin/dashboard" method="post">
-        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
-        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
+      <form action="/admin/login" method="post">
+        <input name="username" placeholder="Username" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white;border:1px solid #444" required>
+        <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white;border:1px solid #444" required>
+        <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer;font-size:18px">Login</button>
       </form>
+      <p style="margin-top:20px"><a href="/" style="color:#00C4B4">Back to main site</a></p>
     </div>
     """)
 
-@app.post("/admin/dashboard")
-async def login_post(username: str = Form(...), password: str = Form(...)):
+# Handle login (POST)
+@app.post("/admin/login")
+async def admin_login_post(username: str = Form(...), password: str = Form(...)):
+    # Simple check - change these credentials later!
     if username == "staff" and password == "qcrstaff123":
+        # In real app you'd use session/cookie here - for now we redirect
         return RedirectResponse("/admin/dashboard", status_code=303)
-    return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/admin'>← Try again</a></p>")
+    return HTMLResponse("""
+    <div style="max-width:400px;margin:100px auto;background:#2a2a2a;padding:40px;border-radius:15px;text-align:center;color:#e0e0e0">
+      <h2 style="color:red">Wrong credentials</h2>
+      <p><a href="/admin" style="color:#00C4B4">← Try again</a></p>
+    </div>
+    """)
 
 # Admin dashboard
 @app.get("/admin/dashboard")
