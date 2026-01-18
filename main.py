@@ -6,11 +6,11 @@ import os
 
 app = FastAPI()
 
-# Database connection
+# Database (use Render env var in production)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://qcruser:Quick@Sp-456782@localhost/qcrdb")
 engine = create_engine(DATABASE_URL)
 
-# Create bookings table if not exists
+# Create table if missing
 with engine.connect() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS bookings (
@@ -28,15 +28,10 @@ with engine.connect() as conn:
     """))
     conn.commit()
 
-# Simple staff login (change username/password in production!)
-def verify_staff(credentials: dict):
-    correct_username = "staff"
-    correct_password = "qcrstaff123"  # CHANGE THIS!
-    if credentials.get("username") == correct_username and credentials.get("password") == correct_password:
-        return credentials["username"]
-    raise HTTPException(status_code=401, detail="Invalid staff credentials")
+# Simple staff login (change this!)
+def verify_staff(username: str, password: str):
+    return username == "staff" and password == "qcrstaff123"
 
-# Public page - disabled message
 @app.get("/")
 async def public_page():
     return HTMLResponse("""
@@ -45,12 +40,12 @@ async def public_page():
     <head>
       <title>Quick Click Repairs</title>
       <style>
-        body { font-family: Arial, sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center; }
-        .box { max-width: 600px; padding: 40px; background: #2a2a2a; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h1 { color: #00C4B4; margin-bottom: 20px; }
-        p { font-size: 20px; line-height: 1.5; margin: 20px 0; }
-        a { color: #00C4B4; text-decoration: none; font-weight: bold; }
-        a:hover { text-decoration: underline; }
+        body {font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center}
+        .box {max-width:600px;padding:40px;background:#2a2a2a;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
+        h1 {color:#00C4B4;margin-bottom:20px}
+        p {font-size:20px;line-height:1.5;margin:20px 0}
+        a {color:#00C4B4;text-decoration:none;font-weight:bold}
+        a:hover {text-decoration:underline}
       </style>
     </head>
     <body>
@@ -62,7 +57,7 @@ async def public_page():
            Unit 18, 9-19 Rose Road<br>
            Southampton, Hampshire SO14 0TE<br>
            Phone: 023 8036 1277</p>
-        <p style="margin-top: 40px;">
+        <p style="margin-top:40px">
           <a href="/admin">Staff / Admin Login →</a>
         </p>
       </div>
@@ -70,7 +65,6 @@ async def public_page():
     </html>
     """)
 
-# Login page
 @app.get("/admin")
 async def admin_login():
     return HTMLResponse("""
@@ -84,14 +78,12 @@ async def admin_login():
     </div>
     """)
 
-# Handle login
 @app.post("/admin/dashboard")
 async def login_post(username: str = Form(...), password: str = Form(...)):
     if username == "staff" and password == "qcrstaff123":
         return RedirectResponse("/admin/dashboard", status_code=303)
     return HTMLResponse("<h2 style='color:red;text-align:center'>Wrong credentials</h2><p style='text-align:center'><a href='/admin'>← Try again</a></p>")
 
-# Admin dashboard with bookings list
 @app.get("/admin/dashboard")
 async def admin_dashboard():
     with engine.connect() as conn:
@@ -120,25 +112,22 @@ async def admin_dashboard():
     <head>
       <title>Admin Dashboard - Quick Click Repairs</title>
       <style>
-        body {{ font-family: Arial, sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; padding: 20px; }}
-        .container {{ max-width: 1400px; margin: auto; }}
-        h1 {{ color: #00C4B4; text-align: center; }}
-        .header {{ background: #000; padding: 15px; text-align: center; border-radius: 8px; margin-bottom: 30px; }}
-        table {{ width: 100%; border-collapse: collapse; background: #2a2a2a; margin-top: 20px; }}
-        th {{ background: #00C4B4; color: black; padding: 12px; text-align: left; }}
-        td {{ padding: 12px; border-bottom: 1px solid #444; }}
-        tr:hover {{ background: #333; }}
-        .new-booking {{ display: block; margin: 30px auto; background: #00C4B4; color: white; padding: 16px 30px; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; text-decoration: none; text-align: center; width: 300px; }}
-        .new-booking:hover {{ background: #00a89a; }}
+        body {{font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:20px}}
+        .container {{max-width:1400px;margin:auto}}
+        h1 {{color:#00C4B4;text-align:center}}
+        table {{width:100%;border-collapse:collapse;background:#2a2a2a;margin-top:20px}}
+        th {{background:#00C4B4;color:black;padding:12px;text-align:left}}
+        td {{padding:12px;border-bottom:1px solid #444}}
+        tr:hover {{background:#333}}
+        .new-booking {{display:block;margin:30px auto;background:#00C4B4;color:white;padding:16px 30px;border:none;border-radius:8px;font-size:18px;cursor:pointer;text-decoration:none;text-align:center;width:300px}}
+        .new-booking:hover {{background:#00a89a}}
       </style>
     </head>
     <body>
-      <div class="header">
-        <h1>Quick Click Repairs - Admin Dashboard</h1>
-      </div>
       <div class="container">
-        <h2>All Bookings</h2>
+        <h1>Admin Dashboard</h1>
         <a href="/admin/new-booking" class="new-booking">+ Create New Booking</a>
+        <h2>All Bookings</h2>
         <table>
           <tr>
             <th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Service</th><th>Date & Time</th><th>Notes</th><th>Created By</th><th>Created At</th>
@@ -154,7 +143,6 @@ async def admin_dashboard():
     </html>
     """)
 
-# Staff booking form
 @app.get("/admin/new-booking")
 async def new_booking():
     return HTMLResponse("""
