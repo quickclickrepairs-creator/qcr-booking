@@ -1,68 +1,11 @@
-from fastapi import FastAPI, Form, Request, HTTPException
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import create_engine, text
-from datetime import datetime
-import os
 
 app = FastAPI()
 
-# Database (Render sets DATABASE_URL automatically)
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+# Your existing routes...
 
-# Create table
-with engine.connect() as conn:
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS customers (
-            id SERIAL PRIMARY KEY,
-            first_name VARCHAR(100) NOT NULL,
-            last_name VARCHAR(100) NOT NULL,
-            business_name VARCHAR(150),
-            email VARCHAR(255) NOT NULL,
-            phone VARCHAR(50) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            check_in_at TIMESTAMP
-        )
-    """))
-    conn.commit()
-
-# Login credentials (change these!)
-ADMIN_USER = "alan"
-ADMIN_PASS = "qcr123"
-
-@app.get("/")
-async def public_page():
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Quick Click Repairs</title>
-      <style>
-        body {font-family:Arial,sans-serif;background:#1e1e1e;color:#e0e0e0;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center}
-        .box {max-width:600px;padding:40px;background:#2a2a2a;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
-        h1 {color:#00C4B4;margin-bottom:20px}
-        p {font-size:20px;line-height:1.5;margin:20px 0}
-        a {color:#00C4B4;text-decoration:none;font-weight:bold}
-        a:hover {text-decoration:underline}
-      </style>
-    </head>
-    <body>
-      <div class="box">
-        <h1>Bookings Only In-Store</h1>
-        <p>We no longer accept online bookings.</p>
-        <p>Please visit our shop or call to schedule a repair slot.</p>
-        <p><strong>Quick Click Repairs</strong><br>
-           Unit 18, 9-19 Rose Road<br>
-           Southampton, Hampshire SO14 0TE<br>
-           Phone: 023 8036 1277</p>
-        <p style="margin-top:40px">
-          <a href="/admin">Staff / Admin Login →</a>
-        </p>
-      </div>
-    </body>
-    </html>
-    """)
-
+# Login page (GET)
 @app.get("/admin")
 async def admin_login():
     return HTMLResponse("""
@@ -73,6 +16,21 @@ async def admin_login():
         <input name="password" type="password" placeholder="Password" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white" required>
         <button type="submit" style="background:#00C4B4;color:white;padding:15px;width:100%;border:none;border-radius:8px;cursor:pointer">Login</button>
       </form>
+    </div>
+    """)
+
+# Login handler (POST) – this fixes the error
+@app.post("/admin/login")
+async def admin_login_post(username: str = Form(...), password: str = Form(...)):
+    # Replace with your real check
+    if username == "staff" and password == "qcrstaff123":
+        # In real app you'd set a session/cookie here
+        return RedirectResponse("/admin/dashboard", status_code=303)
+    
+    return HTMLResponse("""
+    <div style="max-width:400px;margin:100px auto;background:#2a2a2a;padding:40px;border-radius:15px;text-align:center;color:#e0e0e0">
+      <h2 style="color:red">Wrong credentials</h2>
+      <p><a href="/admin" style="color:#00C4B4">← Try again</a></p>
     </div>
     """)
 
