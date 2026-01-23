@@ -119,3 +119,70 @@ async def admin_dashboard():
     </body>
     </html>
     """)
+
+# Customers table (if not already created)
+with engine.connect() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS customers (
+            id SERIAL PRIMARY KEY,
+            first_name VARCHAR(100) NOT NULL,
+            last_name VARCHAR(100) NOT NULL,
+            business_name VARCHAR(150),
+            email VARCHAR(255) NOT NULL,
+            phone VARCHAR(50) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            check_in_at TIMESTAMP
+        )
+    """))
+    conn.commit()
+
+# New Customer form (staff only)
+@app.get("/admin/new-customer")
+async def new_customer_form():
+    return HTMLResponse("""
+    <div style="max-width:600px;margin:40px auto;background:#2a2a2a;padding:40px;border-radius:15px">
+      <h1 style="color:#00C4B4;text-align:center">New Customer</h1>
+      <form action="/admin/create-customer" method="post">
+        <input name="first_name" placeholder="First Name" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="last_name" placeholder="Last Name" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="business_name" placeholder="Business Name (optional)" style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="email" type="email" placeholder="Email" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <input name="phone" placeholder="Phone Number" required style="width:100%;padding:14px;margin:10px 0;border-radius:8px;background:#333;color:white">
+        <button type="submit" style="background:#00C4B4;color:white;padding:18px;font-size:20px;border:none;border-radius:10px;width:100%;cursor:pointer;margin-top:20px">Save Customer</button>
+      </form>
+      <p style="text-align:center;margin-top:30px"><a href="/admin/dashboard" style="color:#00C4B4">← Back to Dashboard</a></p>
+    </div>
+    """)
+
+# Create Customer (POST)
+@app.post("/admin/create-customer")
+async def create_customer(
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    business_name: str = Form(None),
+    email: str = Form(...),
+    phone: str = Form(...)
+):
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO customers (first_name, last_name, business_name, email, phone)
+            VALUES (:first, :last, :business, :email, :phone)
+        """), {
+            "first": first_name,
+            "last": last_name,
+            "business": business_name,
+            "email": email,
+            "phone": phone
+        })
+        conn.commit()
+    return RedirectResponse("/admin/dashboard", status_code=303)
+
+# Check-in (GET)
+@app.get("/admin/checkin/{customer_id}")
+async def checkin(customer_id: int):
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE customers SET check_in_at = CURRENT_TIMESTAMP WHERE id = :id AND check_in_at IS NULL
+        """), {"id": customer_id})
+        conn.commit()
+    return RedirectResponse("/admin/dashboard", status_code=303)
