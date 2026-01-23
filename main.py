@@ -242,9 +242,16 @@ async def login(username: str = Form(...), password: str = Form(...)):
         session_id = f"session_{datetime.utcnow().timestamp()}"
         sessions[session_id] = {"username": username}
         print(f"[DEBUG] Login successful - session_id: {session_id}")
+        print(f"[DEBUG] Active sessions: {len(sessions)}")
         
         response = RedirectResponse(url="/dashboard", status_code=302)
-        response.set_cookie(key="session_id", value=session_id)
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            httponly=True,
+            max_age=86400,
+            samesite="lax"
+        )
         return response
     
     print("[DEBUG] Login failed - invalid credentials")
