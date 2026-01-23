@@ -50,14 +50,18 @@ sessions = {}
 
 def get_current_user(request: Request):
     session_id = request.cookies.get("session_id")
+    print(f"[DEBUG] Checking session - session_id: {session_id}, active sessions: {len(sessions)}")
     if not session_id or session_id not in sessions:
+        print(f"[DEBUG] Session not found or invalid")
         return None
+    print(f"[DEBUG] Valid session found for user: {sessions[session_id]}")
     return sessions[session_id]
 
 def require_auth(request: Request):
     user = get_current_user(request)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        print("[DEBUG] Auth required but no valid session, redirecting to login")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return user
 
 # Routes
@@ -242,7 +246,7 @@ async def login(username: str = Form(...), password: str = Form(...)):
         session_id = f"session_{datetime.utcnow().timestamp()}"
         sessions[session_id] = {"username": username}
         print(f"[DEBUG] Login successful - session_id: {session_id}")
-        print(f"[DEBUG] Active sessions: {len(sessions)}")
+        print(f"[DEBUG] Total active sessions: {len(sessions)}")
         
         response = RedirectResponse(url="/dashboard", status_code=302)
         response.set_cookie(
@@ -289,6 +293,7 @@ async def logout(request: Request):
     session_id = request.cookies.get("session_id")
     if session_id and session_id in sessions:
         del sessions[session_id]
+        print(f"[DEBUG] Session {session_id} logged out")
     
     response = RedirectResponse(url="/", status_code=302)
     response.delete_cookie(key="session_id")
