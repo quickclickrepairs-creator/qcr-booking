@@ -1,3 +1,15 @@
+import os
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+class Config(BaseModel):
+    host: str
+    port: int = 8000
+
+app = FastAPI(config=Config())
+
+
 from sqlalchemy import create_engine
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///quick_click_repair.db"
