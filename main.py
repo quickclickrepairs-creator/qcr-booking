@@ -104,43 +104,27 @@ def get_page_layout(title: str, content: str, active_menu: str = "") -> str:
     return html
 
 # Define routes
+# New comprehensive routes for dashboard, customers, and tickets.
+
 @app.get("/admin/dashboard")
-async def read_root():
-    return Dashboard(title="Dashboard", content=f"Welcome to the dashboard!", active_menu="dashboard")
+async def admin_dashboard():
+    # Logic to render dashboard
+    return templates.TemplateResponse("dashboard.html", context={})
 
-@app.get("/admin/customers/")
-async def read_customers():
-    db = get_db()
-    customers = db.query(Customer).all()
-    return [Customer.to_dict() for customer in customers]
+@app.get("/admin/customers")
+async def admin_customers():
+    # Logic to fetch customers
+    customers = fetch_customers_from_db()
+    return templates.TemplateResponse("customers.html", context={"customers": customers})
 
-@app.post("/admin/customers/new")
-async def create_customer(customer: Customer):
-    db = get_db()
-    new_customer = db.insert(Customer)
-    db.commit()
-    send_whatsapp(customer.phone, f"Welcome to the system! We will contact you within {timedelta(days=1)} days.")
-    return {"message": "Customer created successfully", "customer_id": new_customer}
-
-@app.get("/admin/tickets/")
-async def read_tickets():
-    db = get_db()
-    tickets = db.query(Ticket).all()
-    html = get_page_layout("Tickets", f"Here are your tickets:\n\n{', '.join([str(ticket) for ticket in tickets])}")
-    return html
-
-@app.post("/admin/tickets/new")
-async def create_ticket(ticket: Ticket):
-    db = get_db()
-    new_ticket = db.insert(Ticket)
-    db.commit()
-    send_whatsapp(ticket.customer_phone, f"Ticket created successfully! We will contact you within {timedelta(days=1)} days.")
-    return {"message": "Ticket created successfully", "ticket_id": new_ticket}
+@app.get("/admin/tickets")
+async def admin_tickets():
+    # Logic to fetch tickets
+    tickets = fetch_tickets_from_db()
+    return templates.TemplateResponse("tickets.html", context={"tickets": tickets})
 
 @app.post("/admin/tickets/")
-async def delete_ticket():
-    db = get_db()
-    db.execute("DELETE FROM tickets WHERE id = 1")
-    db.commit()
-    send_whatsapp("", f"Ticket deleted successfully!")
-    return {"message": "Ticket deleted successfully"}
+async def create_ticket(ticket_data: TicketCreate):
+    # Logic to create a new ticket in the database
+    create_ticket_in_db(ticket_data)
+    return RedirectResponse(url="/admin/tickets", status_code=303)
