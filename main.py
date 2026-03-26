@@ -1,130 +1,50 @@
-from fastapi import FastAPI, Response
-import uvicorn
-from pydantic import BaseModel
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import pandas as pd
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-
-app = FastAPI()
-
-# Database settings
-host = "localhost"
-port = 8000
-database = f"sqlite:///example.db"
-
-# Create database connection
-engine = create_engine(f"F PostgreSQL://{username}:{password}@{host}/{database}", echo=True)
-BaseModel.metadata.create_all(engine)
-
-SessionLocal = sessionmaker(bind=engine)
-
-def get_db():
-    return SessionLocal()
-
-class Customer(BaseModel):
-    id: int
-    first_name: str
-    last_name: str
-    business_name: str
-    email: str
-    phone: str
-
-class Ticket(BaseModel):
-    id: int
-    customer_name: str
-    customer_phone: str
-    customer_email: str
-    device_type: str
-    brand: str
-    model: str
-    fault_type: str
-    faults: list[str]
-    accessories: list[str]
-    estimated_cost: float
-
-class Dashboard(BaseModel):
-    title: str
-    content: str
-    active_menu: str = "Dashboard"
-
-def send_whatsapp(to_phone, message):
-    # WhatsApp API settings
-    whatsapp_api_key = "YOUR_API_KEY"
-    whatsapp_api_secret = "YOUR_API_SECRET"
-
-    # Send WhatsApp notification
-    headers = {
-        'Authorization': f'Bearer {whatsapp_api_key}',
-        'Content-Type': 'application/json'
-    }
-    data = {'to_phone': to_phone, 'message': message}
-    response = requests.post(f'https://api.whatsapp.com/api/{whatsapp_api_key}/send', json=data, headers=headers)
-    if response.status_code == 200:
-        print("WhatsApp notification sent successfully")
-
-def get_page_layout(title: str, content: str, active_menu: str = "") -> str:
-    html = f"""
-    <html>
-    <head>
-        <title>{title}</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                background-color: #000;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>{title}</h1>
-        <p>{content}</p>
-        {active_menu}
-        <form action="/admin/tickets/new">
-            <label for="device_type">Device Type:</label>
-            <select id="device_type" name="device_type">
-                <option value="">Select</option>
-                <option value="Desktop">Desktop</option>
-                <option value="Tablet">Tablet</option>
-                <option value="Mobile">Mobile</option>
-            </select><br><label for="fault_type">Fault Type:</label>
-            <select id="fault_type" name="fault_type">
-                <option value="">Select</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Circuit Breaker">Circuit Breaker</option>
-                <option value="Other">Other</option>
-            </select><br><button type="submit">New Ticket</button>
-        </form>
-    </body>
-    </html>
-    """
-    return html
-
-# Define routes
-# New comprehensive routes for dashboard, customers, and tickets.
-
 @app.get("/admin/dashboard")
-async def admin_dashboard():
-    # Logic to render dashboard
-    return templates.TemplateResponse("dashboard.html", context={})
+async def admin_dashboard(request: Request, user: User = Depends(require_auth)):
+    """
+    Main page for admin dashboard, with 4 buttons and a table for recent tickets.
+    :param request: starlette.requests.Request
+    :param user: app.models.User
+    :return: fastapi.responses.HTMLResponse
+    """
+    return templates.TemplateResponse(
+        "admin/dashboard.html", {"request": request, "user": user}
+    )
 
 @app.get("/admin/customers")
-async def admin_customers():
-    # Logic to fetch customers
-    customers = fetch_customers_from_db()
-    return templates.TemplateResponse("customers.html", context={"customers": customers})
+async def admin_customers(request: Request, user: User = Depends(require_auth)):
+    """
+    Table with all customers, plus button to add new customer
+    :param request: starlette.requests.Request
+    :param user: app.models.User
+    :return: fastapi.responses.HTMLResponse
+    """
+    return templates.TemplateResponse(
+        "admin/customers.html", {"request": request, "user": user}
+    )
 
-@app.get("/admin/tickets")
-async def admin_tickets():
-    # Logic to fetch tickets
-    tickets = fetch_tickets_from_db()
-    return templates.TemplateResponse("tickets.html", context={"tickets": tickets})
+@app.get("/admin/customers/new")
+async def admin_customer_create(request: Request, user: User = Depends(require_auth)):
+    """
+    Form to create new customer with first name, last name and other fields.
+    :param request: starlette.requests.Request
+    :param user: app.models.User
+    :return: fastapi.responses.HTMLResponse
+    """
+    return templates.TemplateResponse(
+        "admin/customer_create.html", {"request": request, "user": user}
+    )
 
-@app.post("/admin/tickets/")
-async def create_ticket(ticket_data: TicketCreate):
-    # Logic to create a new ticket in the database
-    create_ticket_in_db(ticket_data)
-    return RedirectResponse(url="/admin/tickets", status_code=303)
+@app.post("/admin/customers/new")
+async def admin_customer_submit(
+    request: Request,
+    user: User = Depends(require_auth),
+    db=Depends(get_db),
+):
+    """
+    Submit the new customer form and add it to DB. If successful, send WhatsApp welcome message and redirect to /admin/tickets/new?customer_id=ID
+    :param request: starlette.requests.Request
+    :param user: app.models.User
+    :param db: sqlalchemy.engine.Engine (SQLAlchemy database engine)
+    :return: fastapi.responses.HTMLResponse or fastapi.responses.RedirectResponse
+    """
+    ...
